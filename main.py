@@ -77,7 +77,7 @@ def save_results_cache(data: dict):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v2.9"}
+    return {"status": "ok", "version": "v3.0"}
 
 if __name__ == "__main__":
     import os
