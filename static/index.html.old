@@ -697,71 +697,49 @@ async function apiPost(endpoint, data){
   }catch(_){}
 }
 
-// ── DATA LAYER: Server is source of truth ────────────────────────────────────
-// In-memory cache — loaded from server on startup
-let _tradesCache = [];
-let _listsCache = {};
+// Override getTradeLog / saveTradeLog to also sync with server
+const _origGetTradeLog = () => {
+  try{ return JSON.parse(localStorage.getItem('trade_log')||'[]'); }catch(_){ return []; }
+};
+const _origSaveTradeLog = (log) => {
+  localStorage.setItem('trade_log', JSON.stringify(log));
+};
 
 function getTradeLog(){
-  // Always return from memory cache (loaded from server on startup)
-  if(_tradesCache.length > 0) return _tradesCache;
-  // Fallback to localStorage if cache empty
-  try{ return JSON.parse(localStorage.getItem('trade_log')||'[]'); }catch(_){ return []; }
+  return _origGetTradeLog();
 }
-
 function saveTradeLog(log){
-  _tradesCache = log; // Update memory cache
-  localStorage.setItem('trade_log', JSON.stringify(log)); // Local backup
-  apiPost('trades', log); // Save to server (fire and forget)
+  _origSaveTradeLog(log);
+  // Async sync to server (fire and forget)
+  apiPost('trades', log);
 }
 
-function getLists(){
-  if(Object.keys(_listsCache).length > 0) return _listsCache;
-  try{ return JSON.parse(localStorage.getItem('ema_lists')||'{}'); }catch(_){ return {}; }
-}
-
-function saveLists(lists){
-  _listsCache = lists;
-  localStorage.setItem('ema_lists', JSON.stringify(lists));
-  apiPost('lists', lists);
-}
-
-// Load from server on startup — server is source of truth
+// Load from server on startup (overrides localStorage if server has newer data)
 async function loadFromServer(){
   if(!IS_SERVER) return;
   try{
-    // Load trades into memory cache
+    // Load trades
     const trades = await apiGet('trades', null);
-    if(trades && Array.isArray(trades)){
-      _tradesCache = trades;
+    if(trades && Array.isArray(trades) && trades.length > 0){
       localStorage.setItem('trade_log', JSON.stringify(trades));
-      console.log('✓ Loaded', trades.length, 'trades from server');
     }
-    // Load lists into memory cache
+    // Load lists
     const lists = await apiGet('lists', null);
-    if(lists && typeof lists === 'object'){
-      _listsCache = lists;
+    if(lists && Object.keys(lists).length > 0){
       localStorage.setItem('ema_lists', JSON.stringify(lists));
     }
     // Load bars cache
     const bars = await apiGet('cache/bars', null);
     if(bars && bars.cache && bars.cache.length > 0){
       localStorage.setItem('ema_bars_cache', JSON.stringify(bars));
-      // Restore rawBarsCache in memory
-      try{ bars.cache.forEach(([t,b])=>{rawBarsCache[t]=b;}); }catch(_){}
     }
     // Load results cache
     const results = await apiGet('cache/results', null);
     if(results && results.data && results.data.length > 0){
       localStorage.setItem('ema_results', JSON.stringify(results));
-      // Restore results in memory
-      try{ window._results=results.data; }catch(_){}
     }
-    addLog('✅ נטענו נתונים מהשרת: '+(_tradesCache.length)+' עסקאות, '+(Object.keys(_listsCache).length)+' רשימות','lo');
-  }catch(e){ 
-    console.warn('Server load failed:', e);
-    addLog('⚠ טעינה מהשרת נכשלה — משתמש בנתונים מקומיים','le');
-  }
+    console.log('✓ Loaded from server');
+  }catch(e){ console.warn('Server load failed:', e); }
 }
 
 // Override getLists/saveLists to sync with server
@@ -1028,11 +1006,7 @@ function recalcFromCache(){
       const cacheEntries=Object.entries(rawBarsCache).map(([t,bars])=>([t,bars]));
       localStorage.setItem('ema_bars_cache',JSON.stringify({ts:Date.now(),cache:cacheEntries}));
     }catch(_){}
-    try{
-      const resData={ts:Date.now(),data:results};
-      localStorage.setItem('ema_results',JSON.stringify(resData));
-      apiPost('cache/results',resData);
-    }catch(_){}
+    try{localStorage.setItem('ema_results',JSON.stringify({ts:Date.now(),data:results}));}catch(_){}
   },30);
 }
 
@@ -1298,8 +1272,8 @@ function updateTradeTotal(){
 }
 function closeTradeModal(){document.getElementById('order-modal').className='modal-overlay';}
 // ── TRADE LOG ─────────────────────────────────────────────────────────────────
-// getTradeLog / saveTradeLog — defined in API bridge above (server-first)
-// Do not redefine here
+function getTradeLog(){try{return JSON.parse(localStorage.getItem('trade_log')||'[]');}catch(_){return[];}}
+function saveTradeLog(log){localStorage.setItem('trade_log',JSON.stringify(log));}
 function addTradeEntry(entry){
   const log=getTradeLog();
   log.unshift(entry); // newest first
@@ -1465,8 +1439,8 @@ async function copyCode(){
 
 // ── LIST MANAGER ─────────────────────────────────────────────────────────────
 // ── MY LISTS ─────────────────────────────────────────────────────────────────
-// getLists / saveLists — defined in API bridge above (server-first)
-// Do not redefine here
+function getLists(){try{return JSON.parse(localStorage.getItem('ema_lists')||'{}');}catch(_){return {};}}
+function saveLists(lists){localStorage.setItem('ema_lists',JSON.stringify(lists));}
 
 let editingListName=null; // null = new list, string = editing existing
 
