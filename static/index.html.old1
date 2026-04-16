@@ -111,7 +111,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <div class="dot" id="dot"></div>
     EMA Crossover Scanner
     <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
-    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.1 · 09.04.2026</span>
+    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.0 · 09.04.2026</span>
     <span class="badge badge-amber" id="market-badge">...</span>
   </h1>
   <div style="display:flex;gap:8px;align-items:center;">
@@ -129,12 +129,6 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
 <div class="grid2">
 <div>
   <div class="card">
-    <!-- BROKER SELECTOR -->
-    <div class="env-toggle" style="margin-bottom:10px;">
-      <button id="broker-tradier" class="active" onclick="setBroker('tradier')">Tradier</button>
-      <button id="broker-tastytrade" onclick="setBroker('tastytrade')">TastyTrade</button>
-    </div>
-    <div id="tradier-section">
     <div class="card-title">Tradier API</div>
     <div class="env-toggle">
       <button id="btn-sandbox" class="active" onclick="setEnv('sandbox')">Sandbox</button>
@@ -163,7 +157,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     </div>
     <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
     <div class="progress-label" id="progress-label"></div>
-    <div id="log" style="min-height:220px;max-height:400px;"><div class="ll li">הכנס API token ולחץ "בדוק חיבור"</div></div>
+    <div id="log"><div class="ll li">הכנס API token ולחץ "בדוק חיבור"</div></div>
   </div>
 
   <div class="card">
@@ -201,28 +195,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <button class="btn-secondary btn-sm" id="refresh-idx-btn" onclick="refreshLiveIndex()" style="margin-top:8px;width:100%;font-size:11px;" title="Fetch live constituents from Tradier">
       🔄 Update index tickers
     </button>
-    </div><!-- /tradier-section -->
     <div id="idx-refresh-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
-
-    <!-- TASTYTRADE CONFIG -->
-    <div id="tt-section" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
-      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">TastyTrade</div>
-      <div class="env-toggle">
-        <button id="btn-tt-sandbox" class="active" onclick="setTTEnv('sandbox')">Sandbox</button>
-        <button id="btn-tt-live" onclick="setTTEnv('live')">Live</button>
-      </div>
-      <div><label>Username</label><input type="text" id="tt-username" placeholder="tastytrade username"/></div>
-      <div><label>Password</label><input type="password" id="tt-password" placeholder="password"/></div>
-      <div id="tt-accounts-row" style="display:none;">
-        <label>Account</label>
-        <select id="tt-account-select" style="width:100%;padding:5px 8px;font-size:12px;"></select>
-      </div>
-      <div style="display:flex;gap:6px;margin-top:6px;">
-        <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר</button>
-        <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
-      </div>
-      <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
-    </div>
     <div style="margin-top:12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">My Lists</div>
     <div id="custom-list-btns" style="display:flex;flex-direction:column;gap:4px;"></div>
     <button class="btn-secondary btn-sm" onclick="openMyListModal()" style="width:100%;margin-top:8px;font-size:12px;">⊕ רשימה חדשה</button>
@@ -429,7 +402,6 @@ UNH</textarea>
       <span id="tl-closed-count" style="font-size:12px;color:var(--muted);"></span>
       <div style="display:flex;gap:6px;align-items:center;">
         <button class="btn-sm" onclick="event.stopPropagation();openAddClosedModal()" style="background:rgba(79,110,247,.12);color:var(--accent);border:1px solid rgba(79,110,247,.25);font-size:11px;">+ הוסף ידנית</button>
-        <button class="btn-sm" onclick="event.stopPropagation();adminClearClosed()" style="background:transparent;color:var(--border2);border:1px solid transparent;font-size:10px;" title="Admin בלבד">🔒</button>
         <span id="tl-closed-arrow" style="color:var(--muted);">▶</span>
       </div>
     </div>
@@ -715,8 +687,14 @@ async function apiGet(endpoint, fallback=null){
 }
 
 async function apiPost(endpoint, data){
-  // Server sync disabled for security - data stays local
-  return;
+  if(!IS_SERVER) return;
+  try{
+    await fetch('/api/'+endpoint, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data)
+    });
+  }catch(_){}
 }
 
 // ── DATA LAYER: Server is source of truth ────────────────────────────────────
@@ -724,47 +702,17 @@ async function apiPost(endpoint, data){
 let _tradesCache = [];
 let _listsCache = {};
 
-// ── PERMANENT CLOSED TRADES STORAGE ─────────────────────────────────────────
-// Closed trades are stored separately and NEVER deleted (except by admin)
-const CLOSED_KEY='ema_closed_trades_permanent';
-
-function getClosedTrades(){
-  try{ return JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]'); }catch(_){ return []; }
-}
-
-function saveClosedTrades(closed){
-  localStorage.setItem(CLOSED_KEY, JSON.stringify(closed));
-  apiPost('closed_trades', closed); // Sync to server
-}
-
-function mergeClosedIntoLog(log){
-  // Merge permanent closed trades into log (avoid duplicates by orderId)
-  const closed=getClosedTrades();
-  const logIds=new Set(log.map(e=>String(e.orderId)));
-  const toAdd=closed.filter(e=>!logIds.has(String(e.orderId)));
-  return [...log, ...toAdd];
-}
-
 function getTradeLog(){
+  // Always return from memory cache (loaded from server on startup)
   if(_tradesCache.length > 0) return _tradesCache;
-  try{
-    const log=JSON.parse(localStorage.getItem('trade_log')||'[]');
-    return mergeClosedIntoLog(log);
-  }catch(_){ return getClosedTrades(); }
+  // Fallback to localStorage if cache empty
+  try{ return JSON.parse(localStorage.getItem('trade_log')||'[]'); }catch(_){ return []; }
 }
 
 function saveTradeLog(log){
-  // Extract closed buy positions → save permanently
-  const newClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
-  if(newClosed.length>0){
-    const existing=getClosedTrades();
-    const existingIds=new Set(existing.map(e=>String(e.orderId)));
-    const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
-    if(toAdd.length>0) saveClosedTrades([...existing,...toAdd]);
-  }
-  _tradesCache=log;
-  localStorage.setItem('trade_log', JSON.stringify(log));
-  apiPost('trades', log);
+  _tradesCache = log; // Update memory cache
+  localStorage.setItem('trade_log', JSON.stringify(log)); // Local backup
+  apiPost('trades', log); // Save to server (fire and forget)
 }
 
 function getLists(){
@@ -778,9 +726,9 @@ function saveLists(lists){
   apiPost('lists', lists);
 }
 
-// Server sync disabled for security
+// Load from server on startup — server is source of truth
 async function loadFromServer(){
-  return; // Data stays in localStorage only
+  if(!IS_SERVER) return;
   try{
     // Load trades into memory cache
     const trades = await apiGet('trades', null);
@@ -788,12 +736,6 @@ async function loadFromServer(){
       _tradesCache = trades;
       localStorage.setItem('trade_log', JSON.stringify(trades));
       console.log('✓ Loaded', trades.length, 'trades from server');
-    }
-    // Load permanent closed trades
-    const closedPerm = await apiGet('closed_trades', null);
-    if(closedPerm && Array.isArray(closedPerm) && closedPerm.length > 0){
-      localStorage.setItem(CLOSED_KEY, JSON.stringify(closedPerm));
-      console.log('✓ Loaded', closedPerm.length, 'permanent closed trades');
     }
     // Load lists into memory cache
     const lists = await apiGet('lists', null);
@@ -842,10 +784,10 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.1';
-const APP_DATE='16.04.2026';
+const APP_VERSION='v3.0';
+const APP_DATE='14.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.1', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
+  {v:'v3.0', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
   {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
   {v:'v2.6', date:'07.04.2025', notes:'MyList כתיבה מחדש, Paste מלוח, עדכון שם, EXCHANGE:TICKER format'},
   {v:'v2.5', date:'07.04.2025', notes:'יומן עסקאות: Orders+Positions נפרדים, מכירה Market/Limit, סטופ אוטו'},
@@ -1169,21 +1111,6 @@ function updateClock(){
   else if(min>=960){b.textContent='שוק סגור';b.className='badge badge-amber';}
   else{b.textContent='טרום מסחר';b.className='badge badge-blue';}
 }
-// Auto-save to server at end of day (after 16:10 ET)
-function scheduleEndOfDaySave(){
-  const now=new Date();
-  const et=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
-  const target=new Date(et);
-  target.setHours(16,10,0,0);
-  if(et>target) target.setDate(target.getDate()+1);
-  const ms=target-et;
-  setTimeout(async()=>{
-    addLog('⏰ שמירה אוטומטית סוף יום...','li');
-    await exportToServer();
-    scheduleEndOfDaySave();
-  },ms);
-}
-
 function scheduleAuto(){
   if(autoScanTimer)clearTimeout(autoScanTimer);
   const ms=getNextScan()-getNY();
@@ -1209,13 +1136,7 @@ async function testConnection(){
       addLog("→ שגיאת CORS — ודא שה-token נכון ו-sandbox/live מתאים","li");
   }
 }
-function saveConfig(){
-  localStorage.setItem('tradier_token',TOKEN());
-  localStorage.setItem('tradier_account',ACCT());
-  addLog('✓ נשמר','lo');
-  // Push to server
-  exportToServer();
-}
+function saveConfig(){localStorage.setItem('tradier_token',TOKEN());localStorage.setItem('tradier_account',ACCT());addLog('✓ נשמר','lo');}
 function getTickers(){return document.getElementById('tickers').value.split(/[\n,\s]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);}
 function updateTickerCount(){const t=getTickers();document.getElementById('ticker-count').textContent=t.length?t.length+' טיקרים':'';}
 document.getElementById('tickers').addEventListener('input',updateTickerCount);
@@ -1273,9 +1194,7 @@ function addLog(msg,cls=''){
   const log=document.getElementById('log');
   const d=document.createElement('div');d.className='ll'+(cls?' '+cls:'');
   d.textContent=new Date().toLocaleTimeString('he-IL')+'  '+msg;
-  log.appendChild(d);
-  while(log.children.length>150) log.removeChild(log.firstChild);
-  log.scrollTop=log.scrollHeight;
+  log.appendChild(d);log.scrollTop=log.scrollHeight;
 }
 function updateStats(){
   const v=results.filter(r=>!r.error);
@@ -1458,7 +1377,12 @@ async function submitOrders(){
           const fillPrice=parseFloat(filledOrder.avg_fill_price||entryPrice)||entryPrice;
           res.innerHTML+=`<div style="color:var(--green);font-size:11px;">  ↳ ✓ מולא @ $${fillPrice}</div>`;
           
-          // Auto stop disabled — use "+ סטופ" button in trade log
+          // Send stop
+          const stopBody={class:'equity',symbol:t,side:'sell',quantity:qty,type:'stop',stop:stopPrice,duration:'gtc'};
+          const sd=await tPost('/accounts/'+ACCT()+'/orders',stopBody);
+          const stopId=sd.order?.id;
+          res.innerHTML+=`<div style="color:var(--amber);font-size:11px;">  ↳ 🛡️ Stop שנשלח @ $${stopPrice} — ID: ${stopId}</div>`;
+          addLog('🛡️ '+t+' Stop @ $'+stopPrice+' — ID: '+stopId,'');
           
           // Update trade log entry
           const log=getTradeLog();
@@ -1893,11 +1817,9 @@ async function exportToServer(){
     const lists=JSON.parse(localStorage.getItem('ema_lists')||'{}');
     const bars=JSON.parse(localStorage.getItem('ema_bars_cache')||'null');
     const results=JSON.parse(localStorage.getItem('ema_results')||'null');
-    const closedPerm = JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
     await Promise.all([
       apiPost('trades', trades),
       apiPost('lists', lists),
-      apiPost('closed_trades', closedPerm),
       bars?apiPost('cache/bars', bars):Promise.resolve(),
       results?apiPost('cache/results', results):Promise.resolve(),
     ]);
@@ -1950,188 +1872,6 @@ function openVersionModal(){
   `).join('');
   document.getElementById('version-modal').className='modal-overlay show';
 }
-// ── TASTYTRADE API ───────────────────────────────────────────────────────────
-let ttEnv='sandbox', ttSessionToken=null, ttAccountNumber=null, activeBroker='tradier';
-
-const TT_BASE=()=>ttEnv==='sandbox'?'https://api.cert.tastytrade.com':'https://api.tastytrade.com';
-
-function setBroker(b){
-  activeBroker=b;
-  localStorage.setItem('active_broker',b);
-  const btnT=document.getElementById('broker-tradier');
-  const btnTT=document.getElementById('broker-tastytrade');
-  const secT=document.getElementById('tradier-section');
-  const secTT=document.getElementById('tt-section');
-  if(btnT) btnT.className=b==='tradier'?'active':'';
-  if(btnTT) btnTT.className=b==='tastytrade'?'active':'';
-  if(secT) secT.style.display=b==='tradier'?'':'none';
-  if(secTT) secTT.style.display=b==='tastytrade'?'':'none';
-}
-
-function setTTEnv(e){
-  ttEnv=e;ttSessionToken=null;
-  document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
-  document.getElementById('btn-tt-live').className=e==='live'?'active':'';
-  localStorage.setItem('tt_env',e);
-}
-
-async function ttRequest(method, path, body=null){
-  const headers={'Content-Type':'application/json','X-TT-Env':ttEnv};
-  if(ttSessionToken) headers['Authorization']=ttSessionToken;
-  const opts={method,headers};
-  if(body) opts.body=JSON.stringify(body);
-  // Use proxy when running via server (Railway), direct otherwise
-  const url=IS_SERVER?('/tt-proxy'+path):(TT_BASE()+path);
-  const r=await fetch(url,opts);
-  if(!r.ok){
-    const err=await r.json().catch(()=>({}));
-    throw new Error('TT '+r.status+': '+(err?.error?.message||err?.errors?.[0]?.detail||r.statusText));
-  }
-  return r.json();
-}
-
-async function ttLogin(){
-  const user=document.getElementById('tt-username').value.trim();
-  const pass=document.getElementById('tt-password').value.trim();
-  const statusEl=document.getElementById('tt-status');
-  if(!user||!pass){statusEl.textContent='הכנס username וpassword';statusEl.style.color='var(--red)';return;}
-  try{
-    statusEl.textContent='מתחבר...';statusEl.style.color='var(--muted)';
-    const data=await ttRequest('POST','/sessions',{'login':user,'password':pass,'remember-me':true});
-    ttSessionToken=data.data['session-token'];
-    const remToken=data.data['remember-token'];
-    localStorage.setItem('tt_session',ttSessionToken);
-    localStorage.setItem('tt_remember',remToken);
-    localStorage.setItem('tt_user',user);
-    addLog('✓ TastyTrade: התחברות הצליחה','lo');
-    // Load accounts
-    await ttLoadAccounts();
-    statusEl.textContent='✓ מחובר';statusEl.style.color='var(--green)';
-  }catch(e){
-    statusEl.textContent='✗ '+e.message;statusEl.style.color='var(--red)';
-    addLog('✗ TastyTrade: '+e.message,'le');
-  }
-}
-
-async function ttLoadAccounts(){
-  try{
-    const data=await ttRequest('GET','/customers/me/accounts');
-    const accounts=data.data?.items||[];
-    const select=document.getElementById('tt-account-select');
-    select.innerHTML=accounts.map(a=>{
-      const num=a.account['account-number'];
-      const type=a.account['account-type-name']||'';
-      const nick=a.account['nickname']||num;
-      return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
-    }).join('');
-    if(accounts.length>0){
-      ttAccountNumber=accounts[0].account['account-number'];
-      select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
-      document.getElementById('tt-accounts-row').style.display='';
-      // Auto-restore last selected account
-      const saved=localStorage.getItem('tt_account');
-      if(saved&&accounts.find(a=>a.account['account-number']===saved)){
-        select.value=saved;ttAccountNumber=saved;
-      }
-      addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
-    }
-  }catch(e){addLog('✗ TastyTrade accounts: '+e.message,'le');}
-}
-
-function ttSaveConfig(){
-  const statusEl=document.getElementById('tt-status');
-  statusEl.textContent='✓ נשמר — לחץ התחבר';statusEl.style.color='var(--green)';
-  addLog('✓ TastyTrade config נשמר','lo');
-}
-
-async function ttCheckConnection(){
-  const statusEl=document.getElementById('tt-status');
-  // Try restore from remember token
-  const saved=localStorage.getItem('tt_session');
-  if(saved){ttSessionToken=saved;}
-  if(!ttSessionToken){statusEl.textContent='לא מחובר — לחץ התחבר';statusEl.style.color='var(--red)';return;}
-  try{
-    const data=await ttRequest('GET','/customers/me');
-    const email=data.data?.email||'';
-    statusEl.textContent='✓ מחובר: '+email;statusEl.style.color='var(--green)';
-    await ttLoadAccounts();
-  }catch(e){
-    ttSessionToken=null;
-    statusEl.textContent='✗ Token פג — התחבר מחדש';statusEl.style.color='var(--red)';
-  }
-}
-
-// ── TastyTrade equivalents for Tradier functions ──────────────────────────────
-async function ttGetPositions(){
-  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
-  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/positions');
-  return data.data?.items||[];
-}
-
-async function ttGetOrders(){
-  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
-  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/orders/live');
-  return data.data?.items||[];
-}
-
-async function ttGetBalances(){
-  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
-  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/balances');
-  return data.data;
-}
-
-async function ttGetQuotes(symbols){
-  // TastyTrade uses market-data endpoint
-  const syms=symbols.join(',');
-  const data=await ttRequest('GET','/market-data/equities/'+syms);
-  return data.data?.items||[];
-}
-
-async function ttGetHistory(symbol,days=320){
-  // TastyTrade: use market-data/history
-  const end=new Date(),start=new Date();
-  start.setDate(start.getDate()-days);
-  const fmt=d=>d.toISOString().slice(0,10);
-  const data=await ttRequest('GET',`/market-data/history/${symbol}?start-time=${fmt(start)}&end-time=${fmt(end)}&period-type=day`);
-  const candles=data.data?.candles||[];
-  return candles.map(c=>({
-    date:c.time?.slice(0,10)||'',
-    open:c.open,high:c.high,low:c.low,close:c.close,volume:c.volume
-  }));
-}
-
-async function ttPlaceOrder(side,symbol,qty,orderType,price=null){
-  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
-  const leg={
-    'instrument-type':'Equity',
-    'symbol':symbol,
-    'quantity':qty,
-    'action':side==='buy'?'Buy to Open':'Sell to Close'
-  };
-  const order={
-    'order-type':orderType==='market'?'Market':'Limit',
-    'time-in-force':orderType==='market'?'Day':'GTC',
-    'legs':[leg]
-  };
-  if(orderType==='limit'&&price) order['price']=price.toString();
-  if(orderType==='stop'&&price){
-    order['order-type']='Stop';
-    order['stop-trigger']=price.toString();
-  }
-  const data=await ttRequest('POST','/accounts/'+ttAccountNumber+'/orders',order);
-  return data.data;
-}
-
-async function ttCancelOrder(orderId){
-  return ttRequest('DELETE','/accounts/'+ttAccountNumber+'/orders/'+orderId);
-}
-
-// ── Broker-aware wrappers (used by scan + trade log) ─────────────────────────
-async function brokerGetHistory(symbol,days=320){
-  if(activeBroker==='tastytrade') return ttGetHistory(symbol,days);
-  return fetchHistory(symbol,days); // Tradier
-}
-
 function openLegend(){document.getElementById('legend-modal').className='modal-overlay show';}
 
 function openAddClosedModal(){
@@ -2410,7 +2150,7 @@ function renderTradeLog(){
     if(!positions_log.length){
       posRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין פוזיציות</td></tr>';
     } else {
-      posRows.innerHTML=positions_log.filter(e=>e.status==='open'||e.status==='pending').map(e=>{
+      posRows.innerHTML=positions_log.map(e=>{
         const fillPrice=parseFloat(e.fillPrice||e.price||0);
         const currPrice=parseFloat(e.currentPrice||0);
         const qty=parseFloat(e.qty||0);
@@ -2516,13 +2256,6 @@ async function sellPosition(ticker, qty, buyOrderId, stopOrderId, orderType){
 
   // Step 2: Send sell order
   try{
-    // Route to correct broker
-    if(activeBroker==='tastytrade'){
-      const ttOrd=await ttPlaceOrder('sell',ticker,qty,orderType,limitPrice);
-      addLog('📤 TT '+ticker+' מכירה × '+qty+' — ID: '+ttOrd.id,'lo');
-      renderTradeLog();
-      return;
-    }
     const body={class:'equity',symbol:ticker,side:'sell',quantity:qty,
       type:orderType==='limit'?'limit':'market',
       duration:orderType==='limit'?'gtc':'day'};
@@ -2755,34 +2488,10 @@ async function cancelStop(ticker,buyOrderId,stopId){
 }
 
 function clearTradeLog(){
-  if(!confirm('נקה עסקאות פתוחות בלבד?\n\nעסקאות סגורות נשמרות לצמיתות ולא יימחקו.'))return;
-  const log=getTradeLog();
-  // Keep closed, remove open/pending
-  const closed=log.filter(e=>e.status==='closed');
-  _tradesCache=closed;
-  localStorage.setItem('trade_log', JSON.stringify(closed));
-  apiPost('trades', closed);
-  updateTradeLogBadge();
-  renderTradeLog();
-  addLog('✓ עסקאות פתוחות נוקו — '+closed.length+' סגורות נשמרו','lo');
-}
-
-function adminClearClosed(){
-  const pin=prompt('קוד ADMIN למחיקת עסקאות סגורות:');
-  if(!pin)return;
-  // Simple hash check
-  let h=0;for(let i=0;i<pin.length;i++)h=((h<<5)-h)+pin.charCodeAt(i);
-  const ADMIN_HASH=-1008685969; // Change this to your own PIN hash
-  if(h!==ADMIN_HASH){alert('קוד שגוי');return;}
-  if(!confirm('מחיקת כל העסקאות הסגורות לצמיתות?\nלא ניתן לשחזר!'))return;
-  localStorage.removeItem(CLOSED_KEY);
-  _tradesCache=[];
+  if(!confirm('למחוק את כל יומן העסקאות?'))return;
   localStorage.removeItem('trade_log');
-  apiPost('trades',[]);
-  apiPost('closed_trades',[]);
   updateTradeLogBadge();
   renderTradeLog();
-  addLog('⚠ כל העסקאות נמחקו על ידי ADMIN','le');
 }
 
 function exportTradeLog(){
@@ -2841,9 +2550,6 @@ function schedulePositionCheck(){
 }
 
 async function checkAllPositions(){
-  // Route to correct broker
-  if(activeBroker==='tastytrade') return checkAllPositionsTT();
-
   if(!TOKEN()||!ACCT()){addLog('⚠ בדיקת פוזיציות: חסר token','le');return;}
   addLog('🔄 בודק פוזיציות מ-Tradier...','li');
   const log=getTradeLog();
@@ -2866,7 +2572,7 @@ async function checkAllPositions(){
       if(equity!=null)addLog('✓ Equity: $'+parseFloat(equity).toFixed(2)+' | Open P&L: '+(parseFloat(openPL||0)>=0?'+':'')+'$'+parseFloat(openPL||0).toFixed(2),'lo');
     }catch(_){}
 
-    // 3. Fetch ALL orders
+    // 3. Fetch ALL orders (today)
     let allOrders=[];
     try{
       const ordData=await tGet('/accounts/'+ACCT()+'/orders');
@@ -2874,7 +2580,7 @@ async function checkAllPositions(){
       allOrders=Array.isArray(raw)?raw:(raw?[raw]:[]);
     }catch(_){}
 
-    // 4. Fetch gainloss
+    // 4. Fetch gainloss (nightly batch — may not have today)
     let gainLoss=[];
     try{
       const glData=await tGet('/accounts/'+ACCT()+'/gainloss');
@@ -2891,250 +2597,219 @@ async function checkAllPositions(){
       tradeHistory=Array.isArray(raw)?raw:(raw?[raw]:[]);
     }catch(_){}
 
-    // 6. Live quotes
+    // 6. Live quotes for open positions
     const openBuys=log.filter(e=>e.side==='buy'&&(e.status==='open'||e.status==='pending'));
     const syms=[...new Set(openBuys.map(e=>e.ticker))];
     let quotes={};
     if(syms.length){
       try{
         const q=await tGet('/markets/quotes',{symbols:syms.join(','),greeks:'false'});
-        let arr=Array.isArray(q.quotes?.quote)?q.quotes.quote:[q.quotes?.quote].filter(Boolean);
+        let raw=q.quotes?.quote||[];
+        let arr=Array.isArray(raw)?raw:[raw];
         arr.forEach(q=>{if(q.symbol)quotes[q.symbol]=parseFloat(q.last||q.bid||0);});
       }catch(_){}
     }
 
-    await _processPositions(log,positions,allOrders,gainLoss,tradeHistory,quotes,updated,
-      // adapters for Tradier format
-      {
-        getPosSymbol: p=>p.symbol,
-        getPosQty: p=>parseFloat(p.quantity||0),
-        getPosCost: p=>parseFloat(p.cost_basis||0)/parseFloat(p.quantity||1),
-        getPosDate: p=>p.date_acquired,
-        getOrdId: o=>String(o.id),
-        getOrdSymbol: o=>o.symbol,
-        getOrdSide: o=>o.side,
-        getOrdType: o=>o.type,
-        getOrdStatus: o=>o.status,
-        getOrdPrice: o=>parseFloat(o.stop_price||o.price||0),
-        getOrdQty: o=>parseFloat(o.quantity||0),
-        getOrdFillPrice: o=>parseFloat(o.avg_fill_price||o.last_fill_price||0),
-        getOrdDate: o=>o.create_date,
-        isStopOrd: o=>(o.type==='stop'||o.type==='stop_limit'||o.type==='stop_market')&&o.side==='sell',
-        isFilledOrd: o=>o.status==='filled',
-        isCanceledOrd: o=>['canceled','rejected','expired'].includes(o.status),
+    // 7. Deduplicate: keep latest open buy per ticker
+    const tickerSeen=new Map();
+    for(let i=0;i<log.length;i++){
+      if(log[i].side==='buy'&&(log[i].status==='open'||log[i].status==='pending')){
+        const key=log[i].ticker;
+        if(tickerSeen.has(key)){
+          // Keep the one with more info (has fillPrice)
+          const prevIdx=tickerSeen.get(key);
+          if(log[prevIdx].fillPrice&&!log[i].fillPrice) log[i].status='duplicate';
+          else {log[prevIdx].status='duplicate'; tickerSeen.set(key,i);}
+        } else tickerSeen.set(key,i);
       }
-    );
+    }
+    const cleanLog=log.filter(e=>e.status!=='duplicate');
+    cleanLog.forEach((e,i)=>log[i]=e);
+    log.length=cleanLog.length;
+
+    // Helper: find how a position was closed
+    function findCloseInfo(ticker, qty, fillPrice){
+      // 1. Check allOrders for a filled stop/sell
+      const filledStop=allOrders.find(o=>
+        o.symbol===ticker&&o.side==='sell'&&o.status==='filled'&&
+        (o.type==='stop'||o.type==='stop_limit'||o.type==='stop_market'||o.type==='market'||o.type==='limit')
+      );
+      if(filledStop){
+        const cp=parseFloat(filledStop.avg_fill_price||filledStop.last_fill_price||0);
+        if(cp>0) return {closePrice:cp, source:'order', orderId:String(filledStop.id), type:filledStop.type};
+      }
+      // 2. Check today's trade history
+      const sellTrade=tradeHistory.find(ev=>
+        ev.type==='trade'&&ev.trade?.symbol===ticker&&
+        (ev.trade?.transaction_type==='sell'||ev.trade?.transaction_type==='sell_short')
+      );
+      if(sellTrade){
+        const cp=parseFloat(sellTrade.trade?.price||0);
+        if(cp>0) return {closePrice:cp, source:'history'};
+      }
+      // 3. Check gainloss (nightly)
+      const gl=gainLoss.find(g=>g.symbol===ticker);
+      if(gl){
+        const cp=parseFloat(gl.proceeds||0)/parseFloat(gl.quantity||1);
+        return {closePrice:cp, source:'gainloss', pnlFromGainloss:parseFloat(gl.gain_loss||0)};
+      }
+      return null;
+    }
+
+    // 8. Import new positions not in log
+    for(const pos of positions){
+      const sym=pos.symbol;
+      if(!sym)continue;
+      const already=log.some(e=>e.ticker===sym&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+      if(!already){
+        const qty=parseFloat(pos.quantity||0);
+        const costBasis=parseFloat(pos.cost_basis||0);
+        const avgCost=qty>0?costBasis/qty:0;
+        const curr=quotes[sym]||0;
+        const uid='pos_'+sym+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+        log.unshift({
+          id:uid,orderId:uid,ticker:sym,side:'buy',qty,type:'imported',
+          price:avgCost,fillPrice:avgCost,status:'open',
+          ts:pos.date_acquired||new Date().toISOString(),
+          stopId:null,stopPrice:null,pnl:null,
+          currentPrice:curr||null,unrealizedPnl:curr&&avgCost?(curr-avgCost)*qty:null,
+          source:'tradier_import'
+        });
+        updated++;
+        addLog('📥 יובאה: '+sym+' ×'+qty+' @ $'+avgCost.toFixed(2),'li');
+      }
+    }
+
+    // 9. Import stop orders not in log
+    for(const ord of allOrders){
+      if(!ord.symbol||ord.class!=='equity')continue;
+      if(!(ord.type==='stop'||ord.type==='stop_limit'||ord.type==='stop_market'))continue;
+      if(ord.side!=='sell')continue;
+      const already=log.some(e=>String(e.orderId)===String(ord.id));
+      if(!already){
+        const buyEntry=log.find(e=>e.ticker===ord.symbol&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+        const linkedBuyOrderId=buyEntry?.orderId||'';
+        if(buyEntry){buyEntry.stopId=String(ord.id);buyEntry.stopPrice=parseFloat(ord.stop_price||ord.price||0);}
+        const stopStatus=ord.status==='open'?'pending':ord.status==='filled'?'filled':ord.status;
+        log.unshift({
+          id:'stop_'+ord.id,orderId:String(ord.id),
+          ticker:ord.symbol,side:'sell',qty:parseFloat(ord.quantity||0),
+          type:ord.type,price:parseFloat(ord.stop_price||ord.price||0),
+          status:stopStatus,
+          ts:ord.create_date||new Date().toISOString(),
+          linkedBuyOrderId,source:'stop',pnl:null,fillPrice:null
+        });
+        updated++;
+        addLog('📥 סטופ: '+ord.symbol+' @ $'+(ord.stop_price||ord.price),'li');
+      }
+    }
+
+    // 10. Update each open buy
+    for(let i=0;i<log.length;i++){
+      const e=log[i];
+      if(e.status!=='open'&&e.status!=='pending')continue;
+      if(e.side!=='buy')continue;
+
+      const pos=positions.find(p=>p.symbol===e.ticker);
+
+      if(pos){
+        // Still open — update pending→open
+        if(e.status==='pending'){
+          const ord=allOrders.find(o=>String(o.id)===String(e.orderId));
+          if(ord?.status==='filled'){
+            log[i].status='open';
+            log[i].fillPrice=parseFloat(ord.avg_fill_price||ord.last_fill_price||e.price);
+            updated++;addLog('✓ '+e.ticker+' מולא @ $'+log[i].fillPrice,'lo');
+          }
+        }
+        // Update live quote
+        if(quotes[e.ticker]){
+          log[i].currentPrice=quotes[e.ticker];
+          const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+          if(fp>0)log[i].unrealizedPnl=(quotes[e.ticker]-fp)*parseFloat(e.qty||0);
+          updated++;
+        }
+        // Check if stop filled (position still technically open but stop triggered today)
+        const filledStop=allOrders.find(o=>
+          o.symbol===e.ticker&&o.side==='sell'&&o.status==='filled'&&
+          (o.type==='stop'||o.type==='stop_limit'||o.type==='stop_market')
+        );
+        if(filledStop){
+          const cp=parseFloat(filledStop.avg_fill_price||filledStop.last_fill_price||e.stopPrice||0);
+          const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+          const pnl=fp>0?(cp-fp)*parseFloat(e.qty||0):0;
+          log[i].status='closed';log[i].pnl=pnl;log[i].closePrice=cp;
+          log[i].closeTs=new Date().toISOString();log[i].closeReason='stop triggered';
+          // Mark stop sell entry as filled
+          const si=log.findIndex(o=>o.side==='sell'&&o.ticker===e.ticker&&(o.source==='stop'||String(o.orderId)===String(filledStop.id))&&o.status!=='canceled');
+          if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
+          updated++;
+          addLog('🛡️ '+e.ticker+' סטופ @ $'+cp+' | P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
+        }
+      } else {
+        // Not in Tradier positions — find close info
+        const closeInfo=findCloseInfo(e.ticker,parseFloat(e.qty||0),parseFloat(e.fillPrice||e.price||0));
+        if(closeInfo){
+          const cp=closeInfo.closePrice;
+          const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+          const pnl=closeInfo.pnlFromGainloss!=null?closeInfo.pnlFromGainloss:(fp>0?(cp-fp)*parseFloat(e.qty||0):null);
+          log[i].status='closed';
+          log[i].pnl=pnl;
+          log[i].closePrice=cp;
+          log[i].closeTs=new Date().toISOString();
+          log[i].closeReason='stop triggered';
+          // Mark stop sell in log as filled
+          const si=log.findIndex(o=>
+            o.side==='sell'&&o.ticker===e.ticker&&
+            (o.source==='stop'||(closeInfo.orderId&&String(o.orderId)===closeInfo.orderId))&&
+            o.status!=='canceled'&&o.status!=='filled'
+          );
+          if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
+          updated++;
+          addLog((pnl!=null?(pnl>=0?'✓':'✗')+' '+e.ticker+': '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2):'⚠ '+e.ticker+' נסגר')+' ('+closeInfo.source+')','lo');
+        } else {
+          // Can't determine — mark closed without P&L
+          log[i].status='closed';
+          log[i].closeTs=new Date().toISOString();
+          log[i].closeReason='position not found';
+          updated++;
+          addLog('⚠ '+e.ticker+' לא נמצא — סומן סגור, בדוק P&L ידנית','le');
+        }
+        continue;
+      }
+    }
+
+    // 11. Sync stop order statuses from Tradier
+    for(let i=0;i<log.length;i++){
+      const e=log[i];
+      if(e.side!=='sell'||e.source!=='stop')continue;
+      if(e.status==='filled'||e.status==='canceled')continue;
+      const tradierOrd=allOrders.find(o=>String(o.id)===String(e.orderId));
+      if(tradierOrd){
+        if(tradierOrd.status==='filled'){
+          log[i].status='filled';
+          log[i].fillPrice=parseFloat(tradierOrd.avg_fill_price||tradierOrd.last_fill_price||e.price||0);
+          updated++;
+        } else if(['canceled','rejected','expired'].includes(tradierOrd.status)){
+          log[i].status='canceled';
+          updated++;
+        }
+      }
+    }
+
+    saveTradeLog(log);
+    updateTradeLogBadge();
+    // Save closed positions cache
+    try{
+      const closedCache=log.filter(e=>e.status==='closed'&&e.side==='buy'&&e.pnl!=null);
+      localStorage.setItem('closed_positions_cache',JSON.stringify({ts:Date.now(),data:closedCache}));
+    }catch(_){}
+    addLog('✅ בדיקה הסתיימה — '+updated+' עדכונים','lo');
 
   }catch(err){
     addLog('✗ checkAllPositions: '+err.message,'le');
     console.error(err);
   }
-}
-
-async function checkAllPositionsTT(){
-  if(!ttSessionToken||!ttAccountNumber){addLog('⚠ TastyTrade: לא מחובר','le');return;}
-  addLog('🔄 בודק פוזיציות מ-TastyTrade...','li');
-  const log=getTradeLog();
-  let updated=0;
-
-  try{
-    // 1. Positions
-    let positions=[];
-    try{ positions=await ttGetPositions(); }catch(_){}
-
-    // 2. Balance
-    try{
-      const bal=await ttGetBalances();
-      const equity=bal?.['net-liquidating-value'];
-      const openPL=bal?.['net-liquidating-value-effect'];
-      if(equity)addLog('✓ TT Equity: $'+parseFloat(equity).toFixed(2),'lo');
-    }catch(_){}
-
-    // 3. Live orders
-    let allOrders=[];
-    try{ allOrders=await ttGetOrders(); }catch(_){}
-
-    // 4. Quotes
-    const openBuys=log.filter(e=>e.side==='buy'&&(e.status==='open'||e.status==='pending'));
-    const syms=[...new Set(openBuys.map(e=>e.ticker))];
-    let quotes={};
-    if(syms.length){
-      try{
-        const qtData=await ttGetQuotes(syms);
-        qtData.forEach(q=>{if(q.symbol)quotes[q.symbol]=parseFloat(q['last']||q['mark']||0);});
-      }catch(_){}
-    }
-
-    await _processPositions(log,positions,allOrders,[],[],quotes,updated,
-      {
-        getPosSymbol: p=>p['underlying-symbol']||p.symbol,
-        getPosQty: p=>parseFloat(p['quantity']||0),
-        getPosCost: p=>parseFloat(p['average-open-price']||p['cost-effect']||0),
-        getPosDate: p=>p['created-at'],
-        getOrdId: o=>String(o.id),
-        getOrdSymbol: o=>o.legs?.[0]?.symbol||o.symbol,
-        getOrdSide: o=>{const a=o.legs?.[0]?.action||''; return a.toLowerCase().includes('buy')?'buy':'sell';},
-        getOrdType: o=>(o['order-type']||'').toLowerCase(),
-        getOrdStatus: o=>(o.status||'').toLowerCase(),
-        getOrdPrice: o=>parseFloat(o['stop-trigger']||o.price||0),
-        getOrdQty: o=>parseFloat(o.legs?.[0]?.quantity||o.quantity||0),
-        getOrdFillPrice: o=>parseFloat(o['average-fill-price']||0),
-        getOrdDate: o=>o['updated-at']||o['created-at'],
-        isStopOrd: o=>{
-          const t=(o['order-type']||'').toLowerCase();
-          const a=(o.legs?.[0]?.action||'').toLowerCase();
-          return (t==='stop'||t==='stop limit')&&a.includes('sell');
-        },
-        isFilledOrd: o=>o.status==='Filled'||o.status==='filled',
-        isCanceledOrd: o=>['Cancelled','cancelled','Rejected','rejected','Expired','expired'].includes(o.status),
-      }
-    );
-
-  }catch(err){
-    addLog('✗ checkAllPositionsTT: '+err.message,'le');
-    console.error(err);
-  }
-}
-
-// Shared processing logic for both brokers
-async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,quotes,updated,ad){
-  // Dedup
-  const tickerSeen=new Map();
-  for(let i=0;i<log.length;i++){
-    if(log[i].side==='buy'&&(log[i].status==='open'||log[i].status==='pending')){
-      const key=log[i].ticker;
-      if(tickerSeen.has(key)){
-        const prevIdx=tickerSeen.get(key);
-        if(log[prevIdx].fillPrice&&!log[i].fillPrice) log[i].status='duplicate';
-        else{log[prevIdx].status='duplicate';tickerSeen.set(key,i);}
-      } else tickerSeen.set(key,i);
-    }
-  }
-  const cleanLog=log.filter(e=>e.status!=='duplicate');
-  cleanLog.forEach((e,i)=>log[i]=e);
-  log.length=cleanLog.length;
-
-  // Find close info helper
-  function findCloseInfo(ticker){
-    const filledSell=allOrders.find(o=>ad.getOrdSymbol(o)===ticker&&ad.getOrdSide(o)==='sell'&&ad.isFilledOrd(o));
-    if(filledSell){const cp=ad.getOrdFillPrice(filledSell);if(cp>0)return{closePrice:cp,source:'order',orderId:ad.getOrdId(filledSell)};}
-    const sellTrade=tradeHistory.find(ev=>ev.type==='trade'&&ev.trade?.symbol===ticker&&(ev.trade?.transaction_type==='sell'||ev.trade?.transaction_type==='sell_short'));
-    if(sellTrade){const cp=parseFloat(sellTrade.trade?.price||0);if(cp>0)return{closePrice:cp,source:'history'};}
-    const gl=gainLoss.find(g=>g.symbol===ticker);
-    if(gl){return{closePrice:parseFloat(gl.proceeds||0)/parseFloat(gl.quantity||1),source:'gainloss',pnlFromGainloss:parseFloat(gl.gain_loss||0)};}
-    return null;
-  }
-
-  // Import new positions
-  for(const pos of positions){
-    const sym=ad.getPosSymbol(pos);
-    if(!sym)continue;
-    const already=log.some(e=>e.ticker===sym&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
-    if(!already){
-      const qty=ad.getPosQty(pos);
-      const avgCost=ad.getPosCost(pos);
-      const curr=quotes[sym]||0;
-      const uid='pos_'+sym+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-      log.unshift({id:uid,orderId:uid,ticker:sym,side:'buy',qty,type:'imported',
-        price:avgCost,fillPrice:avgCost,status:'open',
-        ts:ad.getPosDate(pos)||new Date().toISOString(),
-        stopId:null,stopPrice:null,pnl:null,
-        currentPrice:curr||null,unrealizedPnl:curr&&avgCost?(curr-avgCost)*qty:null,
-        source:'broker_import'});
-      updated++;
-      addLog('📥 יובאה: '+sym+' ×'+qty+' @ $'+avgCost.toFixed(2),'li');
-    }
-  }
-
-  // Import stop orders
-  for(const ord of allOrders){
-    const sym=ad.getOrdSymbol(ord);
-    if(!sym||!ad.isStopOrd(ord))continue;
-    const already=log.some(e=>String(e.orderId)===String(ad.getOrdId(ord)));
-    if(!already){
-      const buyEntry=log.find(e=>e.ticker===sym&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
-      if(buyEntry){buyEntry.stopId=String(ad.getOrdId(ord));buyEntry.stopPrice=ad.getOrdPrice(ord);}
-      const stopStatus=ad.isFilledOrd(ord)?'filled':ad.isCanceledOrd(ord)?'canceled':'pending';
-      log.unshift({id:'stop_'+ad.getOrdId(ord),orderId:String(ad.getOrdId(ord)),
-        ticker:sym,side:'sell',qty:ad.getOrdQty(ord),type:'stop',
-        price:ad.getOrdPrice(ord),status:stopStatus,
-        ts:ad.getOrdDate(ord)||new Date().toISOString(),
-        linkedBuyOrderId:buyEntry?.orderId||'',source:'stop',pnl:null,fillPrice:null});
-      updated++;
-    }
-  }
-
-  // Update open positions
-  for(let i=0;i<log.length;i++){
-    const e=log[i];
-    if(e.status!=='open'&&e.status!=='pending')continue;
-    if(e.side!=='buy')continue;
-
-    const pos=positions.find(p=>ad.getPosSymbol(p)===e.ticker);
-
-    if(pos){
-      // Update quote
-      if(quotes[e.ticker]){
-        log[i].currentPrice=quotes[e.ticker];
-        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
-        if(fp>0)log[i].unrealizedPnl=(quotes[e.ticker]-fp)*parseFloat(e.qty||0);
-        updated++;
-      }
-      // Check if stop filled
-      const filledStop=allOrders.find(o=>ad.getOrdSymbol(o)===e.ticker&&ad.getOrdSide(o)==='sell'&&ad.isStopOrd(o)&&ad.isFilledOrd(o));
-      if(filledStop){
-        const cp=ad.getOrdFillPrice(filledStop)||e.stopPrice||0;
-        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
-        const pnl=fp>0?(cp-fp)*parseFloat(e.qty||0):0;
-        log[i].status='closed';log[i].pnl=pnl;log[i].closePrice=cp;
-        log[i].closeTs=new Date().toISOString();log[i].closeReason='stop triggered';
-        const si=log.findIndex(o=>o.side==='sell'&&o.ticker===e.ticker&&o.source==='stop'&&o.status!=='canceled');
-        if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
-        updated++;
-        addLog('🛡️ '+e.ticker+' סטופ @ $'+cp+' | P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
-      }
-    } else {
-      // Position closed
-      const closeInfo=findCloseInfo(e.ticker);
-      if(closeInfo){
-        const cp=closeInfo.closePrice;
-        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
-        const pnl=closeInfo.pnlFromGainloss!=null?closeInfo.pnlFromGainloss:(fp>0?(cp-fp)*parseFloat(e.qty||0):null);
-        log[i].status='closed';log[i].pnl=pnl;log[i].closePrice=cp;
-        log[i].closeTs=new Date().toISOString();log[i].closeReason='stop triggered';
-        const si=log.findIndex(o=>o.side==='sell'&&o.ticker===e.ticker&&o.source==='stop'&&o.status!=='canceled'&&o.status!=='filled');
-        if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
-        updated++;
-        addLog((pnl!=null?(pnl>=0?'✓':'✗')+' '+e.ticker+': '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2):'⚠ '+e.ticker+' נסגר')+' ('+closeInfo.source+')','lo');
-      } else {
-        log[i].status='closed';log[i].closeTs=new Date().toISOString();
-        log[i].closeReason='position not found';updated++;
-        addLog('⚠ '+e.ticker+' לא נמצא — סומן סגור','le');
-      }
-      continue;
-    }
-  }
-
-  // Sync stop statuses
-  for(let i=0;i<log.length;i++){
-    const e=log[i];
-    if(e.side!=='sell'||e.source!=='stop')continue;
-    if(e.status==='filled'||e.status==='canceled')continue;
-    const tradierOrd=allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId));
-    if(tradierOrd){
-      if(ad.isFilledOrd(tradierOrd)){log[i].status='filled';log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);updated++;}
-      else if(ad.isCanceledOrd(tradierOrd)){log[i].status='canceled';updated++;}
-    }
-  }
-
-  saveTradeLog(log);
-  updateTradeLogBadge();
-  try{
-    const closedCache=log.filter(e=>e.status==='closed'&&e.side==='buy'&&e.pnl!=null);
-    localStorage.setItem('closed_positions_cache',JSON.stringify({ts:Date.now(),data:closedCache}));
-  }catch(_){}
-  addLog('✅ בדיקה הסתיימה — '+updated+' עדכונים','lo');
-  renderTradeLog();
 }
 
 setInterval(updateClock,1000);
@@ -3154,16 +2829,6 @@ updateTradeLogBadge();
 });
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
-// Restore broker selection
-const savedBroker=localStorage.getItem('active_broker')||'tradier';
-setBroker(savedBroker);
-const savedTTEnv=localStorage.getItem('tt_env')||'sandbox';
-setTTEnv(savedTTEnv);
-// Auto-restore TastyTrade session
-if(savedBroker==='tastytrade'){
-  const savedTTSession=localStorage.getItem('tt_session');
-  if(savedTTSession){ttSessionToken=savedTTSession;ttCheckConnection();}
-}
 // Restore closed positions from cache (survives page refresh)
 try{
   const closedCache=JSON.parse(localStorage.getItem('closed_positions_cache')||'null');
@@ -3195,7 +2860,6 @@ try{
 checkParamsDirty();
 schedulePositionCheck();
 scheduleAuto();
-scheduleEndOfDaySave();
 </script>
 </body>
 </html>

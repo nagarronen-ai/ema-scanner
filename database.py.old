@@ -5,12 +5,9 @@ Stores: trades, settings, my lists, scan cache
 import sqlite3
 import json
 import os
+from datetime import datetime
 
-# Railway Volume mounts at /data, local fallback to data/ folder
-if os.path.exists('/data'):
-    DB_PATH = '/data/scanner.db'
-else:
-    DB_PATH = os.environ.get("DB_PATH", "data/scanner.db")
+DB_PATH = os.environ.get("DB_PATH", "data/scanner.db")
 
 class Database:
     def __init__(self):
@@ -32,6 +29,7 @@ class Database:
                 );
             """)
 
+    # ── Generic key/value store ───────────────────────────────────────────────
     def _get(self, key, default=None):
         with self._conn() as conn:
             row = conn.execute("SELECT value FROM kv WHERE key=?", (key,)).fetchone()
@@ -44,12 +42,26 @@ class Database:
                 (key, json.dumps(value, ensure_ascii=False))
             )
 
+    # ── Settings ──────────────────────────────────────────────────────────────
     def get_settings(self):
-        return self._get("settings", {})
+        return self._get("settings", {
+            "tradier_env": "sandbox",
+            "tradier_token": "",
+            "tradier_account": "",
+            "rs_filter": "-2",
+            "ema_tol": "0.5",
+            "vol_mult": "1.5",
+            "batch_size": "5",
+            "atr_period": "14",
+            "atr_mult": "1.5",
+            "entry_max_dist": "3",
+            "entry_lookback": "2",
+        })
 
     def save_settings(self, data: dict):
         self._set("settings", data)
 
+    # ── Trade Log ─────────────────────────────────────────────────────────────
     def get_trades(self):
         return self._get("trades", [])
 
@@ -59,12 +71,14 @@ class Database:
     def clear_trades(self):
         self._set("trades", [])
 
+    # ── My Lists ──────────────────────────────────────────────────────────────
     def get_lists(self):
         return self._get("lists", {})
 
     def save_lists(self, data: dict):
         self._set("lists", data)
 
+    # ── Scan Cache ────────────────────────────────────────────────────────────
     def get_bars_cache(self):
         return self._get("bars_cache", {"ts": 0, "cache": []})
 
@@ -76,17 +90,3 @@ class Database:
 
     def save_results_cache(self, data: dict):
         self._set("results_cache", data)
-
-    def get_closed_trades(self):
-        return self._get("closed_trades_permanent", [])
-
-    def save_closed_trades(self, trades: list):
-        # Merge with existing — never overwrite with empty
-        existing = self._get("closed_trades_permanent", [])
-        if not trades and existing:
-            return  # Never clear with empty list
-        # Merge by orderId
-        existing_ids = {str(e.get('orderId','')) for e in existing}
-        new = [t for t in trades if str(t.get('orderId','')) not in existing_ids]
-        merged = existing + new
-        self._set("closed_trades_permanent", merged)
