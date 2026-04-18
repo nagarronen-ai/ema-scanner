@@ -1,0 +1,3222 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMA Scanner</title>
+<style>
+:root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--text:#e8eaf0;--muted:#7b7f94;--accent:#4f6ef7;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--teal:#14b8a6;--r:10px;--rs:6px;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh;}
+.app{max-width:1500px;margin:0 auto;padding:22px 18px;}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border);}
+.header h1{font-size:18px;font-weight:600;display:flex;align-items:center;gap:10px;}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex-shrink:0;}
+.dot.on{background:var(--green);box-shadow:0 0 6px var(--green);}
+.dot.scanning{background:var(--amber);animation:pulse 1s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+.badge{font-size:11px;padding:3px 8px;border-radius:20px;font-weight:500;}
+.badge-blue{background:rgba(79,110,247,.18);color:#7b9fff;border:1px solid rgba(79,110,247,.3);}
+.badge-green{background:rgba(34,197,94,.15);color:#4ade80;border:1px solid rgba(34,197,94,.3);}
+.badge-amber{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3);}
+.grid2{display:grid;grid-template-columns:310px 1fr;gap:15px;}
+@media(max-width:940px){.grid2{grid-template-columns:1fr;}}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:15px;margin-bottom:12px;}
+.card-title{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:13px;}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:4px;margin-top:10px;}
+label:first-child{margin-top:0;}
+input[type=text],input[type=password],select,textarea{width:100%;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--rs);color:var(--text);padding:8px 10px;font-size:13px;outline:none;transition:border .2s;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
+textarea{resize:vertical;font-family:'SF Mono',monospace;font-size:11px;line-height:1.6;min-height:100px;}
+.row{display:flex;gap:8px;margin-top:8px;}.row>*{flex:1;}
+button{cursor:pointer;border-radius:var(--rs);font-size:13px;font-weight:500;border:none;transition:all .15s;padding:8px 14px;}
+.btn-primary{background:var(--accent);color:#fff;}.btn-primary:hover{background:#3d5ce0;}.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
+.btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border2);}.btn-secondary:hover{background:rgba(255,255,255,.07);}
+.btn-sm{padding:5px 11px;font-size:12px;}
+.btn-amber{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.35);}.btn-amber:hover{background:rgba(245,158,11,.25);}
+.btn-trade{background:rgba(79,110,247,.18);color:#7b9fff;border:1px solid rgba(79,110,247,.3);font-size:12px;padding:4px 11px;}.btn-trade:hover{background:rgba(79,110,247,.28);}.btn-trade:disabled{opacity:.3;cursor:not-allowed;}
+.env-toggle{display:flex;border:1px solid var(--border2);border-radius:var(--rs);overflow:hidden;}
+.env-toggle button{flex:1;border-radius:0;border:none;background:transparent;color:var(--muted);padding:7px;font-size:12px;}
+.env-toggle button.active{background:var(--accent);color:#fff;}
+.idx-btns{display:flex;gap:5px;flex-wrap:wrap;margin-top:8px;}
+.idx-btn{padding:4px 12px;font-size:12px;border-radius:20px;background:var(--bg3);border:1px solid var(--border2);color:var(--muted);cursor:pointer;transition:all .15s;}
+.idx-btn:hover{border-color:var(--accent);color:var(--accent);}
+.idx-btn.active{background:rgba(79,110,247,.18);border-color:rgba(79,110,247,.4);color:#93c5fd;}
+.ticker-count{font-size:11px;color:var(--muted);margin-top:5px;}
+.list-btn{position:relative;padding:4px 42px 4px 12px !important;}
+.list-btn .del-edit{position:absolute;right:22px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:11px;padding:0;line-height:1;}
+.list-btn .del-edit:hover{color:var(--accent);}
+.list-btn .del{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;padding:0;line-height:1;}
+.list-btn .del:hover{color:var(--red);}
+.sched-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:11px 13px;margin-bottom:10px;}
+.sched-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;font-size:12px;}.sched-row:last-child{margin-bottom:0;}
+.sched-label{color:var(--muted);}.sched-val{font-weight:500;}
+.next-scan{color:var(--teal);font-weight:600;}
+.progress-bar{width:100%;height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:8px;display:none;}
+.progress-bar.show{display:block;}
+.progress-fill{height:100%;background:var(--accent);border-radius:2px;transition:width .4s;}
+.progress-label{font-size:11px;color:var(--muted);margin-top:4px;display:none;}
+.progress-label.show{display:block;}
+#log{background:var(--bg);border:1px solid var(--border);border-radius:var(--rs);padding:9px;max-height:120px;overflow-y:auto;font-family:'SF Mono',monospace;font-size:11px;color:var(--muted);margin-top:9px;}
+.ll{line-height:1.75;}.lo{color:var(--green);}.le{color:var(--red);}.li{color:var(--accent);}
+.stats-bar{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin-bottom:13px;}
+@media(max-width:700px){.stats-bar{grid-template-columns:repeat(3,1fr);}}
+.stat{background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);padding:11px 13px;}
+.stat-val{font-size:21px;font-weight:600;line-height:1.2;}
+.stat-label{font-size:11px;color:var(--muted);margin-top:2px;}
+.filter-bar{display:flex;gap:5px;margin-bottom:11px;align-items:center;flex-wrap:wrap;}
+.fbtn{padding:4px 11px;border-radius:20px;background:var(--bg2);border:1px solid var(--border2);color:var(--muted);font-size:12px;cursor:pointer;transition:all .15s;}
+.fbtn.active{background:rgba(79,110,247,.18);border-color:rgba(79,110,247,.4);color:#93c5fd;}
+.search-wrap{margin-left:auto;}
+.search-wrap input{width:150px;padding:4px 10px;direction:ltr;}
+.sel-bar{display:flex;align-items:center;gap:10px;margin-bottom:8px;font-size:12px;color:var(--muted);}
+.sel-bar span{margin-left:auto;}#sel-count{color:var(--accent);font-weight:600;}
+.table-wrap{overflow-x:auto;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r);}
+table{width:100%;border-collapse:collapse;font-size:12.5px;}
+thead{position:sticky;top:0;z-index:1;}
+th{background:var(--bg3);color:var(--muted);font-weight:500;padding:9px 11px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap;cursor:pointer;user-select:none;}
+th.ns{cursor:default;}th:not(.ns):hover{color:var(--text);}
+td{padding:8px 11px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap;}
+tr:last-child td{border-bottom:none;}tr:hover td{background:rgba(255,255,255,.02);}tr.selected td{background:rgba(79,110,247,.07);}
+.tc{font-weight:600;font-size:13px;font-family:'SF Mono',monospace;}
+.pill{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:500;}
+.py{background:rgba(34,197,94,.10);color:#4ade80;}.pn{background:rgba(239,68,68,.08);color:#fca5a5;}
+.ps{background:rgba(79,110,247,.18);color:#93c5fd;border:1px solid rgba(79,110,247,.3);}
+.pm{background:rgba(245,158,11,.10);color:#fcd34d;}.pw{background:rgba(255,255,255,.04);color:var(--muted);}
+.pc{background:rgba(20,184,166,.10);color:#5eead4;border:1px solid rgba(20,184,166,.2);}
+.rp{color:var(--green);font-weight:500;}.rn{color:var(--red);}
+.empty-state{text-align:center;padding:50px 20px;color:var(--muted);}
+/* MODALS */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:100;align-items:center;justify-content:center;}
+.modal-overlay.show{display:flex;}
+.modal-box{background:var(--bg2);border:1px solid var(--border2);border-radius:var(--r);padding:22px;width:420px;max-width:95vw;}
+.modal-title{font-size:16px;font-weight:600;margin-bottom:3px;}.modal-sub{font-size:12px;color:var(--muted);margin-bottom:15px;}
+.ticker-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:13px;}
+.chip{padding:3px 9px;border-radius:4px;background:rgba(79,110,247,.15);color:#93c5fd;font-size:12px;font-family:'SF Mono',monospace;font-weight:600;}
+.modal-footer{display:flex;gap:8px;margin-top:14px;}
+#order-results{display:none;margin-top:10px;background:var(--bg3);border-radius:var(--rs);padding:9px;font-family:'SF Mono',monospace;font-size:11px;max-height:110px;overflow-y:auto;}
+/* COPY MODAL */
+#copy-modal .modal-box{width:600px;}
+#code-area{width:100%;height:260px;font-family:'SF Mono',monospace;font-size:10.5px;background:var(--bg);border:1px solid var(--border2);border-radius:var(--rs);color:#93c5fd;padding:10px;resize:none;direction:ltr;}
+.copy-steps{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.8;}
+.copy-steps b{color:var(--text);}
+input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--accent);}
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="header">
+  <h1>
+    <div class="dot" id="dot"></div>
+    EMA Crossover Scanner
+    <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
+    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.1 · 09.04.2026</span>
+    <span class="badge badge-amber" id="market-badge">...</span>
+  </h1>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <span style="font-size:12px;color:var(--muted)" id="last-scan-label"></span>
+    <button class="btn-secondary btn-sm" onclick="importFromFile()" title="ייבא נתונים מקובץ גיבוי">📂 ייבא נתונים</button>
+    <button class="btn-secondary btn-sm" onclick="exportToServer()" id="sync-btn" title="ייצא/שמור נתונים">☁ גבה נתונים</button>
+    <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
+    <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
+    <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
+    <button class="btn-amber btn-sm" onclick="openCopyModal()">📋 קבל קוד לשמירה</button>
+    <button class="btn-secondary btn-sm" onclick="exportCSV()">ייצוא CSV</button>
+  </div>
+</div>
+
+<div class="grid2">
+<div>
+  <div class="card">
+    <!-- BROKER SELECTOR -->
+    <div class="env-toggle" style="margin-bottom:10px;">
+      <button id="broker-tradier" class="active" onclick="setBroker('tradier')">Tradier</button>
+      <button id="broker-tastytrade" onclick="setBroker('tastytrade')">TastyTrade</button>
+    </div>
+    <div id="tradier-section">
+    <div class="card-title">Tradier API</div>
+    <div class="env-toggle">
+      <button id="btn-sandbox" class="active" onclick="setEnv('sandbox')">Sandbox</button>
+      <button id="btn-live" onclick="setEnv('live')">Live</button>
+    </div>
+    <label>API Token</label>
+    <input type="password" id="api-token" placeholder="הכנס Tradier token..."/>
+    <label>Account ID (למסחר בלבד)</label>
+    <input type="text" id="account-id" placeholder="12345678"/>
+    <div class="row" style="margin-top:10px;">
+      <button class="btn-primary btn-sm" onclick="testConnection()">בדוק חיבור</button>
+      <button class="btn-secondary btn-sm" onclick="saveConfig()">שמור</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">תזמון אוטומטי</div>
+    <div class="sched-box">
+      <div class="sched-row"><span class="sched-label">הרצה אחרי סגירה</span><span class="sched-val">16:05 ET</span></div>
+      <div class="sched-row"><span class="sched-label">הסריקה הבאה</span><span class="next-scan" id="next-scan-time">...</span></div>
+      <div class="sched-row"><span class="sched-label">שעה מקומית</span><span class="sched-val" id="local-clock">—</span></div>
+    </div>
+    <div class="row">
+      <button class="btn-primary btn-sm" id="scan-btn" onclick="startScan()">▶ סרוק עכשיו</button>
+      <button class="btn-secondary btn-sm" onclick="stopScan()">עצור</button>
+    </div>
+    <div class="progress-bar" id="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+    <div class="progress-label" id="progress-label"></div>
+    <div id="log" style="min-height:220px;max-height:400px;"><div class="ll li">הכנס API token ולחץ "בדוק חיבור"</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">פרמטרים</div>
+    <div class="row">
+      <div><label>RS פילטר vs SPY (%)</label><input type="text" id="rs-filter" value="-2"/></div>
+      <div><label>סובלנות EMA (%)</label><input type="text" id="ema-tol" value="0.5"/></div>
+    </div>
+    <div class="row">
+      <div><label>נפח × ממוצע</label><input type="text" id="vol-mult" value="1.5"/></div>
+      <div><label>נפח lookback (ימים)</label><input type="text" id="vol-lookback" value="3" title="כמה ימים אחרונים לבדוק לנפח גבוה"/></div>
+      <div><label>Batch גודל</label><input type="text" id="batch-size" value="5"/></div>
+    </div>
+    <div class="row">
+      <div><label>ATR period (days)</label><input type="text" id="atr-period" value="14"/></div>
+      <div><label>Stop loss (× ATR)</label><input type="text" id="atr-mult" value="1.5"/></div>
+    </div>
+    <div class="row">
+      <div><label>P-Entry: מרחק מקס מ-EMA21 (%)</label><input type="text" id="entry-max-dist" value="3" title="מחיר לא יעלה על X% מעל EMA21 כדי לקבל P-Entry"/></div>
+      <div><label>P-Entry: lookback (ימים)</label><input type="text" id="entry-lookback" value="2"/></div>
+    </div>
+    <button class="btn-primary btn-sm" onclick="if(!this.disabled)recalcFromCache()" id="recalc-btn" disabled style="width:100%;margin-top:10px;opacity:0.4;cursor:not-allowed;">♻ החל פרמטרים על הסריקה הנוכחית</button>
+    <div id="recalc-status" style="font-size:11px;color:var(--muted);margin-top:5px;min-height:14px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">Index / Tickers</div>
+    <div class="idx-btns" id="preset-btns">
+      <button class="idx-btn" onclick="loadIdx('sp500',this)">S&amp;P 500</button>
+      <button class="idx-btn" onclick="loadIdx('nasdaq100',this)">Nasdaq 100</button>
+      <button class="idx-btn" onclick="loadIdx('iwm',this)">IWM Russell</button>
+      <button class="idx-btn" onclick="loadIdx('dow30',this)">Dow 30</button>
+      <button class="idx-btn" onclick="loadIdx('ibd50',this)">IBD 50</button>
+    </div>
+    <button class="btn-secondary btn-sm" id="refresh-idx-btn" onclick="refreshLiveIndex()" style="margin-top:8px;width:100%;font-size:11px;" title="Fetch live constituents from Tradier">
+      🔄 Update index tickers
+    </button>
+    </div><!-- /tradier-section -->
+    <div id="idx-refresh-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
+
+    <!-- TASTYTRADE CONFIG -->
+    <div id="tt-section" style="display:none;margin-top:10px;border-top:1px solid var(--border);padding-top:10px;">
+      <div style="font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px;">TastyTrade</div>
+      <div class="env-toggle">
+        <button id="btn-tt-sandbox" class="active" onclick="setTTEnv('sandbox')">Sandbox</button>
+        <button id="btn-tt-live" onclick="setTTEnv('live')">Live</button>
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
+        OAuth: <a href="https://developer.tastytrade.com/sandbox/" target="_blank" style="color:var(--accent);">צור אפליקציה</a> → Manage → Create Grant
+      </div>
+      <div><label>Client Secret</label><input type="password" id="tt-client-secret" placeholder="client secret"/></div>
+      <div><label>Refresh Token</label><input type="password" id="tt-refresh-token" placeholder="refresh token"/></div>
+      <div id="tt-accounts-row" style="display:none;">
+        <label>Account</label>
+        <select id="tt-account-select" style="width:100%;padding:5px 8px;font-size:12px;"></select>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
+        <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
+      </div>
+      <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
+    </div>
+    <div style="margin-top:12px;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">My Lists</div>
+    <div id="custom-list-btns" style="display:flex;flex-direction:column;gap:4px;"></div>
+    <button class="btn-secondary btn-sm" onclick="openMyListModal()" style="width:100%;margin-top:8px;font-size:12px;">⊕ רשימה חדשה</button>
+    <div class="ticker-count" id="ticker-count" style="margin-top:8px;"></div>
+    <textarea id="tickers" style="margin-top:6px;">AAPL
+MSFT
+NVDA
+AMZN
+GOOGL
+META
+TSLA
+AVGO
+JPM
+UNH</textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;">
+      <button class="btn-secondary btn-sm" style="flex:1;" onclick="clearTickers()">Clear</button>
+      <button class="btn-secondary btn-sm" style="flex:1;" onclick="sortTickers()">Sort A-Z</button>
+      <button class="btn-secondary btn-sm" style="flex:1;" onclick="dedupeTickers()">Dedupe</button>
+    </div>
+  </div>
+</div>
+
+<div>
+  <div class="stats-bar">
+    <div class="stat"><div class="stat-val" id="s-total">—</div><div class="stat-label">נסרקו</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--teal)" id="s-strong">—</div><div class="stat-label">IBD50 + Cross</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--amber)" id="s-mid">—</div><div class="stat-label">קרוב ל-IBD</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--green)" id="s-cross">—</div><div class="stat-label">חצייה EMA21/50</div></div>
+    <div class="stat"><div class="stat-val" style="color:var(--red)" id="s-err">—</div><div class="stat-label">שגיאות</div></div>
+  </div>
+  <div class="filter-bar">
+    <button class="fbtn active" onclick="setFilter('all',this)">הכל</button>
+    <button class="fbtn" onclick="setFilter('strong',this)">🔥 IBD50 חזק</button>
+    <button class="fbtn" onclick="setFilter('mid',this)">⭐ קרוב</button>
+    <button class="fbtn" onclick="setFilter('cross',this)">חצייה EMA</button>
+    <button class="fbtn" onclick="setFilter('entry',this)">🎯 P-Entry</button>
+    <button class="fbtn" onclick="setFilter('above200',this)">מעל SMA150</button>
+    <div class="search-wrap"><input type="text" placeholder="חיפוש..." id="search-input" oninput="renderTable()"/></div>
+  </div>
+  <div class="sel-bar">
+    <input type="checkbox" id="select-all" onchange="toggleSelectAll(this.checked)"/>
+    <label for="select-all" style="margin:0;cursor:pointer;color:var(--muted)">בחר הכל</label>
+    <span><span id="sel-count">0</span> נבחרו &nbsp;<button class="btn-trade" id="trade-btn" onclick="openTradeModal()" disabled>בצע עסקה ▶</button></span>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr>
+        <th class="ns" style="width:34px;"></th>
+        <th onclick="sortBy('ticker')"># טיקר</th>
+        <th onclick="sortBy('close')">מחיר</th>
+        <th onclick="sortBy('sma50val')">SMA50</th>
+        <th onclick="sortBy('sma200val')">SMA150</th>
+        <th onclick="sortBy('ema21val')">EMA21</th>
+        <th onclick="sortBy('ema50val')">EMA50</th>
+        <th onclick="sortBy('atr')">ATR(14)</th>
+        <th onclick="sortBy('breakout')">פריצה 50D</th>
+        <th onclick="sortBy('highVol')">נפח</th>
+        <th onclick="sortBy('emaCross')">חצייה EMA</th>
+        <th onclick="sortBy('rs3m')">RS vs SPY 3M</th>
+        <th onclick="sortBy('signal')">סיגנל</th>
+      </tr></thead>
+      <tbody id="table-body">
+        <tr><td colspan="11"><div class="empty-state">חבר Tradier API token ← הרץ סריקה</div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- COPY MODAL -->
+<div id="copy-modal" class="modal-overlay">
+<div class="modal-box">
+  <div class="modal-title">📋 שמור את הקובץ למחשב</div>
+  <div class="copy-steps">
+    1. לחץ בתוך התיבה הכחולה ← <b>Ctrl+A</b> ← <b>Ctrl+C</b><br>
+    2. פתח <b>Notepad</b> (פנקס רשימות)<br>
+    3. <b>Ctrl+V</b> ← שמור בשם <b>scanner.html</b><br>
+    4. פתח את הקובץ ב-Chrome/Firefox
+  </div>
+  <textarea id="code-area" readonly onclick="this.select()"></textarea>
+  <div class="modal-footer">
+    <button class="btn-primary" onclick="copyCode()" style="flex:1;" id="copy-btn">📋 העתק הכל</button>
+    <button class="btn-secondary" onclick="document.getElementById('copy-modal').className='modal-overlay'">סגור</button>
+  </div>
+</div>
+</div>
+
+<!-- TRADE MODAL -->
+<div id="order-modal" class="modal-overlay">
+<div class="modal-box">
+  <div class="modal-title">ביצוע עסקה</div>
+  <div class="modal-sub">Tradier — מסחר בטיקרים הנבחרים</div>
+  <div style="margin-bottom:11px;">
+    <div style="font-size:12px;color:var(--muted);margin-bottom:7px;">Selected tickers:</div>
+    <div class="ticker-chips" id="modal-chips"></div>
+  </div>
+  <div id="stop-preview" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-bottom:11px;font-size:12px;display:none;">
+    <div style="color:var(--muted);margin-bottom:6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;">Auto Stop Market</div>
+    <div id="stop-lines"></div>
+    <div style="margin-top:6px;color:var(--muted);font-size:11px;">Stop = Price − (ATR × <span id="stop-mult-display">1.5</span>)</div>
+  </div>
+  <div class="row">
+    <div><label style="margin-top:0;">פעולה</label>
+      <select id="order-side"><option value="buy">Buy</option><option value="sell">Sell</option></select></div>
+    <div><label style="margin-top:0;">סוג</label>
+      <select id="order-type"><option value="market">Market</option><option value="limit">Limit</option><option value="stop">Stop</option></select></div>
+  </div>
+  <div class="row">
+    <div><label>Quantity (per ticker)</label><input type="text" id="order-qty" value="10"/></div>
+    <div><label>Price (Limit/Stop)</label><input type="text" id="order-price" placeholder="empty = market"/></div>
+  </div>
+  <div style="margin-top:8px;"><label style="margin-top:0;">Duration</label>
+    <select id="order-dur"><option value="day">Day</option><option value="gtc">GTC</option></select></div>
+  <div id="trade-total" style="background:var(--bg3);border:1px solid var(--border);border-radius:var(--rs);padding:10px 12px;margin-top:10px;display:none;">
+    <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px;">Order Summary</div>
+    <div id="trade-total-lines"></div>
+    <div style="border-top:1px solid var(--border);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;">
+      <span style="font-size:12px;color:var(--muted)">Total value</span>
+      <span style="font-size:15px;font-weight:600;color:var(--accent)" id="trade-grand-total">$0</span>
+    </div>
+  </div>
+  <div id="order-results"></div>
+  <div class="modal-footer">
+    <button class="btn-primary" onclick="submitOrders()" style="flex:1;" id="submit-btn">Send Orders</button>
+    <button class="btn-secondary" onclick="closeTradeModal()">Close</button>
+  </div>
+</div>
+</div>
+
+<!-- TRADE LOG MODAL -->
+<div id="trade-log-modal" class="modal-overlay">
+<div class="modal-box" style="width:min(980px,96vw);max-height:92vh;overflow-y:auto;position:relative;z-index:101;" dir="rtl">
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+    <div>
+      <div class="modal-title" style="margin-bottom:2px;">📋 יומן עסקאות</div>
+      <div style="font-size:12px;color:var(--muted);">היסטוריית קניות, מכירות, רווח והפסד</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn-secondary btn-sm" onclick="(async()=>{await checkAllPositions();renderTradeLog();})()">🔄 בדוק עכשיו</button>
+      <button class="btn-secondary btn-sm" onclick="clearTradeLog()" style="color:var(--red);">🗑 נקה הכל</button>
+      <button class="btn-secondary btn-sm" onclick="exportTradeLog()">⬇ ייצוא CSV</button>
+      <button class="btn-secondary btn-sm" onclick="document.getElementById('trade-log-modal').className='modal-overlay'">✕ סגור</button>
+    </div>
+  </div>
+  <!-- SUMMARY -->
+  <div id="tl-summary" style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:16px;"></div>
+  <!-- ORDERS TABLE -->
+  <div style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);cursor:pointer;" onclick="tlToggle('orders')">
+      <span style="font-size:13px;font-weight:600;">🛡️ Orders</span>
+      <span id="tl-orders-count" style="font-size:12px;color:var(--muted);"></span>
+      <span id="tl-orders-arrow" style="color:var(--muted);">▼</span>
+    </div>
+    <div id="tl-orders-body" style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead>
+          <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">צד</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">כמות</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סוג</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">תוקף</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">מחיר</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סטטוס</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">P&L אם יופעל</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
+          </tr>
+        </thead>
+        <tbody id="tl-orders-rows"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- POSITIONS TABLE -->
+  <div style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);cursor:pointer;" onclick="tlToggle('positions')">
+      <span style="font-size:13px;font-weight:600;">📈 Positions</span>
+      <span id="tl-positions-count" style="font-size:12px;color:var(--muted);"></span>
+      <span id="tl-positions-arrow" style="color:var(--muted);">▼</span>
+    </div>
+    <div id="tl-positions-body" style="overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead>
+          <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">כמות</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">מחיר כניסה</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">מחיר נוכחי</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">שינוי</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Cost Basis</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Gain/Loss</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
+          </tr>
+        </thead>
+        <tbody id="tl-positions-rows"></tbody>
+      </table>
+    </div>
+  </div>
+  <!-- CLOSED POSITIONS TABLE -->
+  <div style="border:1px solid var(--border);border-radius:var(--rs);overflow:hidden;margin-top:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);cursor:pointer;" onclick="tlToggle('closed')">
+      <span style="font-size:13px;font-weight:600;">✓ עסקאות סגורות</span>
+      <span id="tl-closed-count" style="font-size:12px;color:var(--muted);"></span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button class="btn-sm" onclick="event.stopPropagation();openAddClosedModal()" style="background:rgba(79,110,247,.12);color:var(--accent);border:1px solid rgba(79,110,247,.25);font-size:11px;">+ הוסף ידנית</button>
+        <button class="btn-sm" onclick="event.stopPropagation();adminClearClosed()" style="background:transparent;color:var(--border2);border:1px solid transparent;font-size:10px;" title="Admin בלבד">🔒</button>
+        <span id="tl-closed-arrow" style="color:var(--muted);">▶</span>
+      </div>
+    </div>
+    <div id="tl-closed-body" style="display:none;overflow-x:auto;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+        <thead>
+          <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סימבול</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">כמות</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">מחיר כניסה</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">מחיר יציאה</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">P&amp;L</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סיבה</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">תאריך</th>
+            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
+          </tr>
+        </thead>
+        <tbody id="tl-closed-rows"></tbody>
+      </table>
+    </div>
+  </div>
+  <div id="tl-body" style="display:none;"></div>
+</div>
+</div>
+
+<!-- VERSION MODAL -->
+<div id="version-modal" class="modal-overlay">
+<div class="modal-box" style="width:min(600px,96vw);max-height:85vh;overflow-y:auto;" dir="rtl">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;">
+    <div>
+      <div class="modal-title" style="margin-bottom:2px;">🗂 היסטוריית גרסאות</div>
+      <div style="font-size:12px;color:var(--muted);">EMA Crossover Scanner</div>
+    </div>
+    <button class="btn-secondary btn-sm" onclick="document.getElementById('version-modal').className='modal-overlay'">✕ סגור</button>
+  </div>
+  <div id="version-list"></div>
+</div>
+</div>
+
+<!-- ADD CLOSED TRADE MODAL -->
+<div id="add-closed-modal" class="modal-overlay">
+<div class="modal-box" style="width:min(480px,96vw);" dir="rtl">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="modal-title">+ הוספת עסקה סגורה</div>
+    <button class="btn-secondary btn-sm" onclick="document.getElementById('add-closed-modal').className='modal-overlay'">✕</button>
+  </div>
+  <div class="row">
+    <div><label>טיקר</label><input type="text" id="ac-ticker" placeholder="SQQQ" style="text-transform:uppercase;"/></div>
+    <div><label>כמות</label><input type="number" id="ac-qty" placeholder="500"/></div>
+  </div>
+  <div class="row">
+    <div><label>מחיר כניסה ($)</label><input type="number" id="ac-entry" placeholder="47.45" step="0.01"/></div>
+    <div><label>מחיר יציאה ($)</label><input type="number" id="ac-exit" placeholder="70.00" step="0.01"/></div>
+  </div>
+  <div class="row">
+    <div><label>תאריך כניסה</label><input type="date" id="ac-entry-date"/></div>
+    <div><label>תאריך יציאה</label><input type="date" id="ac-exit-date"/></div>
+  </div>
+  <div style="margin-top:8px;"><label>סיבת סגירה</label>
+    <select id="ac-reason">
+      <option value="stop triggered">🛡️ סטופ הופעל</option>
+      <option value="manual sell">📤 מכירה ידנית</option>
+      <option value="limit sell">Limit מכירה</option>
+    </select>
+  </div>
+  <div id="ac-pnl-preview" style="margin-top:12px;background:var(--bg3);border-radius:var(--rs);padding:10px 12px;font-size:13px;display:none;"></div>
+  <div class="modal-footer" style="margin-top:16px;">
+    <button class="btn-primary" onclick="saveClosedTrade()" style="flex:1;">✓ שמור עסקה</button>
+    <button class="btn-secondary" onclick="document.getElementById('add-closed-modal').className='modal-overlay'">ביטול</button>
+  </div>
+</div>
+</div>
+
+<!-- LEGEND MODAL -->
+<div id="legend-modal" class="modal-overlay">
+<div class="modal-box" style="width:min(860px,96vw);max-height:92vh;overflow-y:auto;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;" dir="rtl">
+    <div>
+      <div class="modal-title" style="margin-bottom:2px;">📖 מקרא — סיגנלים ואינדיקטורים</div>
+      <div style="font-size:12px;color:var(--muted);">EMA Crossover Scanner — מדריך מלא למשתמש</div>
+    </div>
+    <button class="btn-secondary btn-sm" onclick="document.getElementById('legend-modal').className='modal-overlay'">✕ סגור</button>
+  </div>
+
+  <!-- INDICATORS -->
+  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px;" dir="rtl">📊 אינדיקטורים</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px;" dir="rtl">
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:#4ade80;font-size:13px;">SMA50</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">avg(close, 50 ימים)</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">ממוצע נע פשוט 50 ימים. קו טרנד בינוני-טווח. <span style="color:#4ade80">ירוק</span> = מחיר מעל, <span style="color:#fca5a5">אדום</span> = מתחת.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:#4ade80;font-size:13px;">SMA150</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">avg(close, 150 ימים)</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">ממוצע נע פשוט 150 ימים. פילטר טרנד ארוך-טווח לפי IBD (במקום SMA200 הקלאסי). <span style="color:#4ade80">ירוק</span> = בול מרקט.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:#93c5fd;font-size:13px;">EMA21</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">ema(close, 21 ימים)</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">ממוצע מעריכי — רגיש יותר לתנועות אחרונות. קו התמיכה הקצר המרכזי של IBD. <span style="color:#4ade80">ירוק</span> = מחיר מעליו.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:#93c5fd;font-size:13px;">EMA50</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">ema(close, 50 ימים)</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">ממוצע מעריכי בינוני — קו הייחוס לחצייה עם EMA21. <span style="color:#4ade80">ירוק</span> = EMA21 מעליו (מגמה עולה).</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:var(--amber);font-size:13px;">ATR(14)</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">avg(true range, 14 ימים)</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">טווח אמיתי ממוצע — תנודתיות יומית ב-$ ו-%. משמש לחישוב סטופ-לוס אוטומטי.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:11px 13px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:var(--text);font-size:13px;">RS vs SPY 3M</span>
+        <span style="font-size:10px;color:var(--muted);font-family:SF Mono,monospace;background:var(--bg);padding:2px 6px;border-radius:4px;">מניה 3M − SPY 3M</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">חוזק יחסי מול S&P 500 לרבעון. <span style="color:#4ade80">חיובי</span> = הכתה את השוק. IBD דורש RS חזק.</div>
+    </div>
+
+  </div>
+
+  <!-- SIGNALS -->
+  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px;" dir="rtl">🚦 סיגנלים</div>
+  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px;" dir="rtl">
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #4f6ef7;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill ps">🔥 IBD50 + Cross</span>
+        <span style="font-size:11px;color:var(--muted);">הסיגנל החזק ביותר</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">כל 6 התנאים מתקיימים יחד: מחיר מעל SMA50 + SMA150 + EMA21 <b>וגם</b> פריצת שיא 50 ימים <b>וגם</b> נפח &gt; 1.5× ממוצע <b>וגם</b> EMA21 חצה מעל EMA50 ב-5 ימים האחרונים <b>וגם</b> RS vs SPY &gt; פילטר.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #a78bfa;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill" style="background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3);">🎯 Price Entry</span>
+        <span style="font-size:11px;color:var(--muted);">כניסה מוקדמת ומדויקת</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">המחיר חצה <b>מעל EMA21</b> ב-3 ימים האחרונים (סובלנות ±0.5%), בזמן ש-EMA21 &gt; EMA50 (טרנד עולה מאושר) + מעל SMA150 + נפח גבוה. זהו סיגנל ה-bounce הקלאסי של IBD — כניסה כשהמחיר קופץ מעל EMA21 בתוך טרנד עולה.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #fcd34d;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill pm">⭐ קרוב ל-IBD</span>
+        <span style="font-size:11px;color:var(--muted);">חזק — חסר אישור</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">מעל SMA50 + SMA150 + EMA21, עם RS vs SPY &gt; 5%. חסרה פריצת שיא או אישור נפח. מועמד לצפייה — עשוי להפוך ל-IBD50 בפריצה הבאה.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #22c55e;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill pc">🟢 LONG Cross</span>
+        <span style="font-size:11px;color:var(--muted);">שינוי מומנטום — עלייה</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">EMA21 חצה <b>מעל</b> EMA50 ב-5 ימים האחרונים. אתמול EMA21 ≤ EMA50, היום EMA21 &gt; EMA50. סיגנל מוקדם לשינוי טרנד. מוקדם יותר מ-Price Entry אבל יותר רעש.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #ef4444;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3);">🔴 SHORT Cross</span>
+        <span style="font-size:11px;color:var(--muted);">שינוי מומנטום — ירידה</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">EMA21 חצה <b>מתחת</b> ל-EMA50 ב-5 ימים האחרונים. מסמן שינוי טרנד שלילי — השתמש כסיגנל יציאה או כניסה לשורט.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid #fca5a5;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill" style="background:rgba(239,68,68,.10);color:#fca5a5;">📉 P-Exit</span>
+        <span style="font-size:11px;color:var(--muted);">יציאה / כניסה לשורט</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">המחיר חצה <b>מתחת ל-EMA21</b> ב-3 ימים האחרונים (סובלנות ±0.5%), בזמן ש-EMA21 &lt; EMA50 (טרנד יורד מאושר). מראה איבוד תמיכה — מקביל ל-Price Entry אבל לכיוון ההפוך.</div>
+    </div>
+
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;border-right:3px solid var(--border2);">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+        <span class="pill pw">לבדוק</span>
+        <span style="font-size:11px;color:var(--muted);">אין סיגנל פעיל</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);line-height:1.7;">נסרקה אך אף תנאי סיגנל לא התקיים. עשויה להיות בעלת ערכי RS או אינדיקטורים מעניינים הראויים למעקב ידני.</div>
+    </div>
+  </div>
+
+  <!-- STOP LOSS -->
+  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px;" dir="rtl">🛡️ סטופ-לוס אוטומטי</div>
+  <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;margin-bottom:16px;font-size:12px;line-height:1.8;color:var(--text);" dir="rtl">
+    על כל פקודת BUY, נשלחת אוטומטית פקודת <b>STOP MARKET</b> למכירה ברמה:<br>
+    <code style="background:var(--bg);padding:4px 8px;border-radius:4px;font-size:12px;color:var(--amber);display:inline-block;margin:6px 0;direction:ltr;">מחיר סטופ = מחיר כניסה − (ATR × מכפיל)</code><br>
+    מכפיל ברירת מחדל = <b>1.5×</b>. שנה בפרמטרים ← "Stop loss (× ATR)". הפקודה נשלחת כ-GTC (תקפה עד ביטול).
+  </div>
+
+  <!-- QUICK REFERENCE -->
+  <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:8px;" dir="rtl">⚡ סדר עדיפויות</div>
+  <div style="background:var(--bg3);border-radius:var(--rs);padding:12px 14px;font-size:12px;line-height:1.9;color:var(--text);" dir="rtl">
+    <b>סיגנלי כניסה — חזק לחלש:</b><br>
+    🔥 IBD50+Cross &nbsp;›&nbsp; 🎯 Price Entry &nbsp;›&nbsp; ⭐ קרוב ל-IBD &nbsp;›&nbsp; 🟢 LONG Cross<br><br>
+    <b>סיגנלי יציאה / שורט:</b><br>
+    🔴 SHORT Cross &nbsp;›&nbsp; 📉 P-Exit<br><br>
+    <b>הסריקה רצה אוטומטית</b> כל יום חול ב-16:05 ET (לאחר סגירת שוק).
+  </div>
+
+</div>
+</div>
+
+<!-- PASTE MODAL -->
+<!-- MY LIST MODAL -->
+<div id="mylist-modal" class="modal-overlay">
+<div class="modal-box" style="width:min(520px,96vw);" dir="rtl">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+    <div class="modal-title" id="mylist-modal-title">רשימה חדשה</div>
+    <button class="btn-secondary btn-sm" onclick="closeMyListModal()">✕ סגור</button>
+  </div>
+  <!-- List name -->
+  <div style="margin-bottom:10px;">
+    <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">שם הרשימה</label>
+    <input type="text" id="mylist-name" placeholder="לדוגמא: Tech Momentum" style="width:100%;padding:8px 10px;font-size:13px;"/>
+  </div>
+  <!-- Tickers area -->
+  <div style="margin-bottom:10px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+      <label style="font-size:11px;color:var(--muted);">טיקרים (כל פורמט — פסיק, שורה, רווח)</label>
+      <div style="display:flex;gap:6px;">
+        <button class="btn-secondary btn-sm" onclick="mylistPasteFromClipboard()" title="הדבק מלוח">📋 Paste</button>
+        <button class="btn-secondary btn-sm" onclick="mylistCopyToClipboard()" title="העתק ללוח">⎘ Copy</button>
+      </div>
+    </div>
+    <textarea id="mylist-tickers" style="min-height:160px;width:100%;direction:ltr;font-size:12px;font-family:SF Mono,monospace;" placeholder="AAPL&#10;MSFT&#10;NVDA&#10;..."></textarea>
+    <div id="mylist-count" style="font-size:11px;color:var(--muted);margin-top:4px;">0 טיקרים</div>
+  </div>
+  <!-- Actions -->
+  <div style="display:flex;gap:8px;">
+    <button class="btn-primary" onclick="saveMyList()" style="flex:1;" id="mylist-save-btn">💾 שמור</button>
+    <button class="btn-secondary" onclick="mylistSortTickers()" style="flex:1;">Sort A-Z</button>
+    <button class="btn-secondary" onclick="mylistDedupe()" style="flex:1;">Dedupe</button>
+  </div>
+</div>
+</div>
+
+<div id="paste-modal" class="modal-overlay">
+<div class="modal-box" style="width:520px;">
+  <div class="modal-title">📋 Update Index Tickers</div>
+  <div id="paste-modal-sub" class="modal-sub"></div>
+  <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;" id="paste-source-links"></div>
+  <textarea id="paste-area" style="min-height:140px;width:100%;direction:ltr;font-size:11px;" placeholder="Paste tickers here — any format works:&#10;AAPL, MSFT, NVDA...&#10;or AAPL&#10;MSFT&#10;NVDA"></textarea>
+  <div style="font-size:11px;color:var(--muted);margin-top:6px;" id="paste-count">0 tickers detected</div>
+  <div class="modal-footer">
+    <button class="btn-primary" onclick="applyPastedTickers()" style="flex:1;">✓ Apply & Save</button>
+    <button class="btn-secondary" onclick="document.getElementById('paste-modal').className='modal-overlay'">Cancel</button>
+  </div>
+</div>
+</div>
+
+<script>
+
+// ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
+// When running via FastAPI server, sync to server instead of localStorage only
+const IS_SERVER = window.location.port !== '' && 
+  !window.location.href.startsWith('file://');
+
+async function apiGet(endpoint, fallback=null){
+  if(!IS_SERVER) return fallback;
+  try{
+    const r = await fetch('/api/'+endpoint);
+    if(!r.ok) return fallback;
+    return await r.json();
+  }catch(_){ return fallback; }
+}
+
+async function apiPost(endpoint, data){
+  // Server sync disabled for security - data stays local
+  return;
+}
+
+// ── DATA LAYER: Server is source of truth ────────────────────────────────────
+// In-memory cache — loaded from server on startup
+let _tradesCache = [];
+let _listsCache = {};
+
+// ── PERMANENT CLOSED TRADES STORAGE ─────────────────────────────────────────
+// Closed trades are stored separately and NEVER deleted (except by admin)
+const CLOSED_KEY='ema_closed_trades_permanent';
+
+function getClosedTrades(){
+  try{ return JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]'); }catch(_){ return []; }
+}
+
+function saveClosedTrades(closed){
+  localStorage.setItem(CLOSED_KEY, JSON.stringify(closed));
+  apiPost('closed_trades', closed); // Sync to server
+}
+
+function mergeClosedIntoLog(log){
+  // Merge permanent closed trades into log (avoid duplicates by orderId)
+  const closed=getClosedTrades();
+  const logIds=new Set(log.map(e=>String(e.orderId)));
+  const toAdd=closed.filter(e=>!logIds.has(String(e.orderId)));
+  return [...log, ...toAdd];
+}
+
+function getTradeLog(){
+  if(_tradesCache.length > 0) return _tradesCache;
+  try{
+    const log=JSON.parse(localStorage.getItem('trade_log')||'[]');
+    return mergeClosedIntoLog(log);
+  }catch(_){ return getClosedTrades(); }
+}
+
+function saveTradeLog(log){
+  // Extract closed buy positions → save permanently
+  const newClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
+  if(newClosed.length>0){
+    const existing=getClosedTrades();
+    const existingIds=new Set(existing.map(e=>String(e.orderId)));
+    const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
+    if(toAdd.length>0) saveClosedTrades([...existing,...toAdd]);
+  }
+  _tradesCache=log;
+  localStorage.setItem('trade_log', JSON.stringify(log));
+  apiPost('trades', log);
+}
+
+function getLists(){
+  if(Object.keys(_listsCache).length > 0) return _listsCache;
+  try{ return JSON.parse(localStorage.getItem('ema_lists')||'{}'); }catch(_){ return {}; }
+}
+
+function saveLists(lists){
+  _listsCache = lists;
+  localStorage.setItem('ema_lists', JSON.stringify(lists));
+  apiPost('lists', lists);
+}
+
+// Server sync disabled for security
+async function loadFromServer(){
+  return; // Data stays in localStorage only
+  try{
+    // Load trades into memory cache
+    const trades = await apiGet('trades', null);
+    if(trades && Array.isArray(trades)){
+      _tradesCache = trades;
+      localStorage.setItem('trade_log', JSON.stringify(trades));
+      console.log('✓ Loaded', trades.length, 'trades from server');
+    }
+    // Load permanent closed trades
+    const closedPerm = await apiGet('closed_trades', null);
+    if(closedPerm && Array.isArray(closedPerm) && closedPerm.length > 0){
+      localStorage.setItem(CLOSED_KEY, JSON.stringify(closedPerm));
+      console.log('✓ Loaded', closedPerm.length, 'permanent closed trades');
+    }
+    // Load lists into memory cache
+    const lists = await apiGet('lists', null);
+    if(lists && typeof lists === 'object'){
+      _listsCache = lists;
+      localStorage.setItem('ema_lists', JSON.stringify(lists));
+    }
+    // Load bars cache
+    const bars = await apiGet('cache/bars', null);
+    if(bars && bars.cache && bars.cache.length > 0){
+      localStorage.setItem('ema_bars_cache', JSON.stringify(bars));
+      // Restore rawBarsCache in memory
+      try{ bars.cache.forEach(([t,b])=>{rawBarsCache[t]=b;}); }catch(_){}
+    }
+    // Load results cache
+    const results = await apiGet('cache/results', null);
+    if(results && results.data && results.data.length > 0){
+      localStorage.setItem('ema_results', JSON.stringify(results));
+      // Restore results in memory
+      try{ window._results=results.data; }catch(_){}
+    }
+    addLog('✅ נטענו נתונים מהשרת: '+(_tradesCache.length)+' עסקאות, '+(Object.keys(_listsCache).length)+' רשימות','lo');
+  }catch(e){ 
+    console.warn('Server load failed:', e);
+    addLog('⚠ טעינה מהשרת נכשלה — משתמש בנתונים מקומיים','le');
+  }
+}
+
+// Override getLists/saveLists to sync with server
+const _origGetLists = window.getLists;
+window.getLists = function(){
+  try{ return JSON.parse(localStorage.getItem('ema_lists')||'{}'); }catch(_){ return {}; }
+};
+window.saveLists = function(lists){
+  localStorage.setItem('ema_lists', JSON.stringify(lists));
+  apiPost('lists', lists);
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
+const INDICES={
+  sp500:"MMM,AOS,ABT,ABBV,ACN,ADBE,AMD,AES,AFL,A,APD,ABNB,AKAM,ALB,ARE,ALGN,ALLE,LNT,ALL,GOOGL,GOOG,MO,AMZN,AMCR,AEE,AEP,AXP,AIG,AMT,AWK,AMP,AME,AMGN,APH,ADI,ANSS,AON,APA,AAPL,AMAT,APTV,ACGL,ADM,ANET,AJG,AIZ,T,ATO,ADSK,ADP,AZO,AVB,AVY,AXON,BKR,BALL,BAC,BAX,BDX,WRB,BBY,BIIB,BLK,BX,BK,BA,BKNG,BWA,BSX,BMY,AVGO,BR,BRO,BG,CDNS,CPT,CPB,COF,CAH,KMX,CCL,CARR,CAT,CBOE,CBRE,CDW,CE,COR,CNC,CNP,CF,CRL,SCHW,CHTR,CVX,CMG,CB,CHD,CI,CINF,CTAS,CSCO,C,CFG,CLX,CME,CMS,KO,CTSH,CL,CMCSA,CAG,COP,ED,STZ,CEG,COO,CPRT,GLW,CPAY,CTVA,CSGP,COST,CTRA,CCI,CSX,CMI,CVS,DHI,DHR,DRI,DVA,DE,DAL,DVN,DXCM,FANG,DLR,DFS,DG,DLTR,D,DPZ,DOV,DOW,DTE,DUK,DD,EMN,ETN,EBAY,ECL,EIX,EW,EA,ELV,LLY,EMR,ENPH,ETR,EOG,EQT,EFX,EQIX,EQR,ESS,EL,ETSY,EG,EVRG,ES,EXC,EXPE,EXPD,EXR,XOM,FFIV,FDS,FICO,FAST,FRT,FDX,FIS,FITB,FSLR,FE,FI,FMC,F,FTNT,FTV,FOXA,FOX,BEN,FCX,GRMN,IT,GEN,GNRC,GD,GE,GEHC,GEV,GIS,GPC,GILD,GPN,GL,GDDY,GS,HAL,HIG,HAS,HCA,DOC,HSIC,HSY,HES,HPE,HLT,HOLX,HD,HON,HRL,HST,HWM,HPQ,HUBB,HUM,HBAN,HII,IBM,IEX,IDXX,ITW,INCY,IR,PODD,INTC,ICE,IFF,IP,IPG,INTU,ISRG,IVZ,INVH,IQV,IRM,JBHT,JBL,JKHY,J,JNJ,JCI,JPM,JNPR,K,KVUE,KDP,KEY,KEYS,KMB,KIM,KMI,KLAC,KHC,KR,LHX,LH,LRCX,LW,LVS,LDOS,LEN,LIN,LYV,LKQ,LMT,L,LOW,LULU,LYB,MTB,MRO,MPC,MKTX,MAR,MMC,MLM,MAS,MA,MTCH,MKC,MCD,MCK,MDT,MRK,META,MET,MTD,MGM,MCHP,MU,MSFT,MAA,MRNA,MHK,MOH,TAP,MDLZ,MPWR,MNST,MCO,MS,MOS,MSI,MSCI,NDAQ,NTAP,NFLX,NEM,NEE,NKE,NI,NDSN,NSC,NTRS,NOC,NCLH,NRG,NUE,NVDA,NVR,NXPI,ORLY,OXY,ODFL,OMC,ON,OKE,ORCL,OTIS,PCAR,PKG,PANW,PH,PAYX,PAYC,PYPL,PNR,PEP,PFE,PCG,PM,PSX,PNW,PNC,POOL,PPG,PPL,PFG,PG,PGR,PRU,PLD,PEG,PTC,PSA,PHM,PWR,QCOM,DGX,RL,RJF,RTX,O,REG,REGN,RF,RSG,RMD,RVTY,ROK,ROL,ROP,ROST,RCL,SPGI,CRM,SBAC,SLB,STX,SEE,SRE,NOW,SHW,SPG,SWKS,SJM,SW,SNA,SOLV,SO,LUV,SWK,SBUX,STT,STLD,STE,SYK,SYF,SNPS,SYY,TMUS,TROW,TTWO,TPR,TRGP,TGT,TEL,TDY,TFX,TER,TSLA,TXN,TXT,TMO,TJX,TSCO,TT,TDG,TRV,TRMB,TFC,TYL,TSN,USB,UBER,UDR,ULTA,UNP,UAL,UPS,URI,UNH,UHS,VLO,VTR,VRSN,VRSK,VZ,VRTX,VFC,VTRS,VICI,V,VST,WAB,WMT,DIS,WM,WAT,WEC,WFC,WELL,WST,WDC,WY,WHR,WMB,WTW,GWW,WYNN,XEL,XYL,YUM,ZBRA,ZBH,ZTS",
+  nasdaq100:"AAPL,MSFT,NVDA,AMZN,META,GOOGL,GOOG,TSLA,AVGO,COST,NFLX,AMD,TMUS,ADBE,PEP,CSCO,INTU,TXN,QCOM,AMGN,AMAT,ISRG,CMCSA,HON,BKNG,VRTX,PANW,ADI,REGN,GILD,SBUX,MU,LRCX,MDLZ,INTC,KLAC,MELI,CTAS,SNPS,CDNS,ABNB,MAR,FTNT,WDAY,MRVL,PYPL,ORLY,NXPI,CEG,MNST,PAYX,ADP,KDP,ADSK,CPRT,CHTR,ROP,PCAR,IDXX,MCHP,ODFL,DXCM,FAST,AEP,XEL,EXC,VRSK,BIIB,DLTR,BKR,FANG,ROST,ON,EA,TTWO,GEHC,ILMN,SWKS,MRNA,LULU,CRWD,DASH,DDOG,TTD,PLTR,ARM,AXON,CSGP,GFS,SMCI,WBD,ZS,TEAM,PDD,CDW,FSLR,ANSS",
+  dow30:"AAPL,AMGN,AXP,BA,CAT,CRM,CSCO,CVX,DIS,DOW,GS,HD,HON,IBM,INTC,JNJ,JPM,KO,MCD,MMM,MRK,MSFT,NKE,PG,TRV,UNH,V,VZ,WBA,WMT",
+  iwm:"ACLS,ACMR,AEIS,AGIO,AGYS,AHCO,AKRO,ALEC,ALGT,ALHC,ALKS,ALRM,ALTR,AMKR,AMNB,AMPH,AMTB,AMWD,ANDE,ANIK,ANIP,APAM,APPF,ARCB,ARCO,ARHS,ARKO,ARLO,AROC,ARRY,ARTNA,ARWR,ASIX,ASMB,ASND,ASPS,ASTE,ATEC,ATEN,ATGE,ATHL,ATLO,ATNI,ATRA,ATRC,ATSG,AVAH,AVAV,AVNW,AXGN,AXSM,AXTA,AZEK,BAND,BANF,BANR,BBIO,BBSI,BCAL,BCPC,BCRX,BFAM,BJRI,BLBD,BLCO,BLMN,BLNK,BLX,BMRC,BOOT,BRC,BRKL,BSRR,BUSE,BWFG,CAAS,CABO,CAMP,CAMT,CARE,CARG,CASH,CBAN,CBSH,CCNE,CDMO,CDNA,CENX,CERT,CEVA,CFFI,CFFN,CHCO,CHEF,CHGG,CHRS,CHUY,CINC,CIVB,CLBK,CLNE,CLPT,CMCO,CMPO,CMPR,CMRE,CNMD,CNOB,CNSL,COHU,COMM,CORE,CORT,CPSS,CRAI,CREX,CRGY,CRMT,CROX,CRSP,CSBR,CSII,CTBI,CTLP,CUTR,CVBF,CVCO,CWST,DENN,DFIN,DGII,DIOD,DLHC,DLNG,DNOW,DOOO,DORM,DXPE,EARN,EBC,EFSC,EGRX,EMKR,ENFN,ENOV,ENSG,ENTA,EPRT,EQBK,ESAB,ESSA,ESTE,EXAS,EXLS,EXPI,EXTR,EZPW,FARO,FBNC,FBRT,FBP,FCBC,FCPT,FELE,FFBC,FGBI,FISI,FLGT,FLIC,FLNC,FLXS,FMNB,FNKO,FNLC,FORM,FORR,FRAF,FRME,FRPH,FRST,FSTR,GCBC,GENC,GENI,GERN,GLDD,GNSS,GOCO,GORV,GPMT,GPOR,GPRE,GRFS,GRND,GRNT,GRPN,GSHD,GTLS,HALL,HALO,HAYN,HBCP,HBIO,HCAT,HCSG,HGV,HIBB,HLNE,HLTH,HMST,HNNA,HOFT,HOLI,HOMB,HONE,HROW,HRMY,HTBI,HTBK,HTLD,HTLF,HWBK,HWKN,IBTX,ICHR,IDCC,IESC,IIIN,ILPT,IMGN,INDB,INFN,INFU,INGN,INMD,INOD,INSM,INSP,INST,INVA,IPAR,IRET,IRTC,IRWD,ISPC,JACK,JAMF,JBSS,JELD,JJSF,JOUT,JRSH,JRVR,JYNT,KALU,KARO,KBAL,KFRC,KFY,KIDS,KNSA,KNSL,KROS,KRTX,KRUS,KRYS,KTOS,KURA,KVHI,LAKE,LANC,LBAI,LBC,LCII,LCNB,LCUT,LDI,LECO,LEGH,LESL,LGND,LKFN,LMAT,LNDC,LNTH,LOCO,LOPE,LOVE,LPRO,LRFC,LSCC,LSTR,LUNA,LUNG,LYTS,MACK,MAIN,MANT,MBIN,MBUU,MCBC,MCRB,MCRI,MEDP,MESO,MFIN,MGNX,MGPI,MGRC,MNKD,MODN,MOFG,MPAA,MRAM,MRCY,MRIN,MRVI,MSBF,MTEX,MTSC,MTSI,MTRN,MTRX,MWA,MYFW,MYGN,NATH,NATR,NBHC,NBIX,NBTB,NCBS,NDLS,NETI,NFBK,NGVT,NKLA,NKTX,NMIH,NNBR,NOVT,NSSC,NTCT,NTST,NVAX,NVEC,NVST,NWBI,NXRT,OCFC,OCGN,OCSL,OCUL,OFED,OFLX,OMAB,OMCL,OPBK,OPRT,ORBC,ORGO,ORMP,ORRF,OSBC,OVID,PAMT,PANL,PAYO,PBCT,PBHC,PBIP,PCSA,PDCO,PDFS,PFBC,PFIS,PFMT,PGTI,PLAB,PLAY,PLBC,PLCE,PLMR,PNFP,PNTG,POWR,PPBI,PRAA,PRCH,PRCT,PRDO,PRFT,PRGS,PRMW,PRTS,PSMT,PSTG,PTCT,PTGX,PVAC,PVBC,PWOD,PZZA,QNST,RAND,RARE,RCKT,RCKY,RCUS,RDFN,RDNT,REGI,RELY,RENT,REXR,RGEN,RLMD,RMNI,RNST,ROCK,ROLL,RPAY,RRGB,RTRX,RUSHA,RYTM,SAFE,SBCF,SBGI,SBRA,SBSI,SCHL,SCPL,SCSC,SDGR,SEAS,SFBS,SFNC,SGMO,SGMS,SHBI,SHLS,SHYF,SIGA,SILK,SIMO,SITM,SLAB,SLCA,SLGN,SMBC,SMCI,SMPL,SMTC,SNBR,SNEX,SOFT,SQSP,SRCE,SSTI,STBA,STFC,STLD,STRA,STRS,STVN,SUPN,SWBI,SYBT,SYNA,SYNH,TALO,TASK,TBBK,TBNK,TCBK,TCMD,TDOC,TELA,TGTX,THFF,TILE,TLRY,TMST,TNET,TOWN,TREK,TRIN,TRIP,TRMK,TRTX,TRVG,TSLX,TTMI,TUSK,TVTX,TXMD,TZOO,UBSI,UCBI,UCTT,ULCC,UMBF,UNIT,UNTY,UPBD,UPWK,URBN,USAK,USIO,USLM,UTMD,VACC,VBTX,VECO,VERI,VIAV,VIRT,VISL,VIVE,VNDA,VNET,VOXX,VREX,VRNA,VTAK,VVOS,VYGR,WABC,WASH,WATT,WERN,WETF,WFRD,WING,WIRE,WNST,WOLF,WRBY,WSBC,WSFS,WTBA,WTRG,XFOR,XNCR,YMAB,ZEUS,ZETA,ZGNX,ZION,ZLAB,ZYXI"
+};
+
+// ── VERSION ──────────────────────────────────────────────────────────────────
+const APP_VERSION='v3.1';
+const APP_DATE='16.04.2026';
+const VERSION_HISTORY=[
+  {v:'v3.1', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
+  {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
+  {v:'v2.6', date:'07.04.2025', notes:'MyList כתיבה מחדש, Paste מלוח, עדכון שם, EXCHANGE:TICKER format'},
+  {v:'v2.5', date:'07.04.2025', notes:'יומן עסקאות: Orders+Positions נפרדים, מכירה Market/Limit, סטופ אוטו'},
+  {v:'v2.4', date:'06.04.2025', notes:'ATR column, Stop ATR multiplier, Auto stop after fill, cache localStorage'},
+  {v:'v2.3', date:'05.04.2025', notes:'EMA50 column, P-Entry signal, SMA150 במקום SMA200, מקרא עברית'},
+  {v:'v2.2', date:'04.04.2025', notes:'חצייה 5 ימים lookback, My Lists manager, EMA cross fix'},
+  {v:'v2.1', date:'03.04.2025', notes:'Tradier API live, Auto scan 16:05 ET, sandbox/live toggle'},
+  {v:'v2.0', date:'02.04.2025', notes:'מעבר מ-Google Sheets ל-HTML עצמאי, סריקה מלאה'},
+];
+
+let results=[],rawBarsCache={},spyRet3mCache=null,currentFilter='all',sortCol='signal',sortDir=-1;
+let lastAppliedParams={};let paramsDirty=false;
+let scanning=false,stopFlag=false,selectedTickers=new Set();
+let tradierEnv='live',autoScanTimer=null;
+
+const BASE=()=>tradierEnv==='sandbox'?'https://sandbox.tradier.com/v1':'https://api.tradier.com/v1';
+const TOKEN=()=>document.getElementById('api-token').value.trim();
+const ACCT=()=>document.getElementById('account-id').value.trim();
+
+async function tGet(path,params={},_log){
+  const url=new URL(BASE()+path);
+  Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+  const ctrl=new AbortController();
+  const timer=setTimeout(()=>ctrl.abort(),12000);
+  let r;
+  try{
+    r=await fetch(url.toString(),{headers:{Authorization:'Bearer '+TOKEN(),Accept:'application/json'},signal:ctrl.signal});
+  }catch(e){
+    clearTimeout(timer);
+    if(e.name==='AbortError')throw new Error('timeout (12s) — הבקשה לא הגיעה לשרת. claude.ai חוסם fetch חיצוני — שמור כ-HTML ופתח ב-Chrome');
+    throw new Error('fetch נכשל: '+e.message+' — נסה לפתוח את הקובץ ישירות ב-Chrome');
+  }
+  clearTimeout(timer);
+  if(r.status===401)throw new Error('401 — token לא תקין או סביבה שגויה (sandbox/live)');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+// Tradier cancel order: PUT /accounts/{id}/orders/{order_id} with status=cancel
+async function tCancelOrder(orderId){
+  const r=await fetch(BASE()+'/accounts/'+ACCT()+'/orders/'+orderId,{
+    method:'PUT',
+    headers:{Authorization:'Bearer '+TOKEN(),Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams({status:'cancel'}).toString()
+  });
+  if(!r.ok)throw new Error('HTTP '+r.status+': '+await r.text().catch(()=>''));
+  return r.json().catch(()=>({}));
+}
+
+// Tradier modify order: PUT /accounts/{id}/orders/{order_id} with new stop price
+async function tModifyOrder(orderId,newStop,qty){
+  const body={stop:newStop};
+  if(qty)body.quantity=qty;
+  const r=await fetch(BASE()+'/accounts/'+ACCT()+'/orders/'+orderId,{
+    method:'PUT',
+    headers:{Authorization:'Bearer '+TOKEN(),Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},
+    body:new URLSearchParams(body).toString()
+  });
+  if(!r.ok)throw new Error('HTTP '+r.status+': '+await r.text().catch(()=>''));
+  return r.json().catch(()=>({}));
+}
+async function tPost(path,body){
+  const r=await fetch(BASE()+path,{method:'POST',headers:{Authorization:'Bearer '+TOKEN(),Accept:'application/json','Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body).toString()});
+  if(!r.ok)throw new Error('HTTP '+r.status+': '+await r.text().catch(()=>''));
+  return r.json();
+}
+
+async function fetchHistory(symbol,days=320){
+  const end=new Date(),start=new Date();
+  start.setDate(start.getDate()-days);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const d=await tGet('/markets/history',{symbol,interval:'daily',start:fmt(start),end:fmt(end)});
+  const raw=d.history?.day;
+  if(!raw)throw new Error('אין נתונים');
+  const arr=Array.isArray(raw)?raw:[raw];
+  return arr.sort((a,b)=>a.date<b.date?-1:1);
+}
+
+function avg(arr){return arr.length?arr.reduce((a,b)=>a+b,0)/arr.length:0;}
+function ema(prices,period){
+  if(prices.length<period)return prices.map(()=>null);
+  const k=2/(period+1);
+  const out=new Array(period-1).fill(null);
+  let e=avg(prices.slice(0,period));out.push(e);
+  for(let i=period;i<prices.length;i++){e=prices[i]*k+e*(1-k);out.push(e);}
+  return out;
+}
+
+function analyzeTicker(ticker,bars,spyRet3m){
+  const n=bars.length;
+  if(n<55)return{ticker,error:`נתונים חסרים (${n})`};
+  const closes=bars.map(b=>parseFloat(b.close)),highs=bars.map(b=>parseFloat(b.high)),volumes=bars.map(b=>parseFloat(b.volume)||0);
+  const close0=closes[n-1];
+  // ATR (14-day Average True Range)
+  const ATR_PERIOD=14;
+  let atrVal=null;
+  if(n>ATR_PERIOD){
+    const trArr=[];
+    for(let i=1;i<bars.length;i++){
+      const h=parseFloat(bars[i].high);
+      const l=parseFloat(bars[i].low);
+      const pc=parseFloat(bars[i-1].close);
+      if(isNaN(h)||isNaN(l)||isNaN(pc))continue; // skip bad data
+      trArr.push(Math.max(h-l, Math.abs(h-pc), Math.abs(l-pc)));
+    }
+    if(trArr.length>=ATR_PERIOD)atrVal=avg(trArr.slice(-ATR_PERIOD));
+  }
+  const sma50=n>=50?avg(closes.slice(-50)):null;
+  const sma200=n>=150?avg(closes.slice(-150)):null;
+  const e21=ema(closes,21),e50=ema(closes,50);
+  const e21_0=e21[n-1],e50_0=e50[n-1],e21_1=e21[n-2],e50_1=e50[n-2];
+  const high50d=n>51?Math.max(...highs.slice(-51,-1)):null;
+  const avgVol20=n>21?avg(volumes.slice(-21,-1)):null;
+  const volMult=parseFloat(document.getElementById('vol-mult').value)||1.5;
+  const emaTol=(parseFloat(document.getElementById('ema-tol').value)||0.5)/100;
+  const rsFilter=parseFloat(document.getElementById('rs-filter').value)||-2;
+  const above50=sma50!=null?close0>sma50:null;
+  const above200=sma200!=null?close0>sma200:null;
+  const aboveEMA21=e21_0!=null?close0>e21_0:null;
+  const breakout=high50d?close0>high50d:null;
+  // Volume: check if ANY of the last N days had high volume
+  const volLookback=Math.max(1,Math.min(10,parseInt(document.getElementById('vol-lookback')?.value)||3));
+  let highVol=null, volRatio=null, highVolDaysAgo=null;
+  if(avgVol20&&avgVol20>0){
+    volRatio=volumes[n-1]/avgVol20; // today's ratio (for display)
+    for(let d=0;d<volLookback&&(n-1-d)>=0;d++){
+      if(volumes[n-1-d]>avgVol20*volMult){
+        highVol=true;
+        highVolDaysAgo=d;
+        break;
+      }
+    }
+    if(highVol===null)highVol=false;
+  }
+  // P-Entry params
+  const pTol=emaTol;
+  const entryMaxDist=(parseFloat(document.getElementById('entry-max-dist')?.value)||3)/100;
+  const entryLookback=Math.max(1,Math.min(5,parseInt(document.getElementById('entry-lookback')?.value)||2));
+
+  // Distance of current price from EMA21 (%)
+  const distFromEMA21=e21_0?((close0-e21_0)/e21_0):null;
+
+  let priceCrossLong=false, priceCrossShort=false;
+  // lookback: search for a cross within last N days
+  // maxDist: current price must still be within X% of TODAY's EMA21
+  // Logic: find cross in lookback window → then check TODAY's distance
+  for(let d=0;d<entryLookback&&(n-1-d)>0;d++){
+    const p0=closes[n-1-d];   // close of day (today=d=0, yesterday=d=1...)
+    const p1=closes[n-2-d];   // close of previous day
+    const e21c=e21[n-1-d];   // EMA21 of that day
+    const e50c=e50[n-1-d];   // EMA50 of that day
+    if(p0==null||p1==null||e21c==null||e50c==null)continue;
+    // Cross detected on day d?
+    const crossedAbove=p0>e21c*(1-pTol)&&p1<=e21c*(1+pTol)&&e21c>e50c;
+    const crossedBelow=p0<e21c*(1+pTol)&&p1>=e21c*(1-pTol)&&e21c<e50c;
+    if(crossedAbove){
+      // Cross found — now check: is TODAY's price still within maxDist of TODAY's EMA21?
+      if(distFromEMA21!==null&&distFromEMA21>=0&&distFromEMA21<=entryMaxDist){
+        priceCrossLong=true;
+      }
+      // Whether valid or not, stop looking (found the most recent cross)
+      break;
+    }
+    if(crossedBelow){
+      if(distFromEMA21!==null&&distFromEMA21<0&&Math.abs(distFromEMA21)<=entryMaxDist){
+        priceCrossShort=true;
+      }
+      break;
+    }
+  }
+
+  // Check cross within last 5 days — use already-computed e21/e50 arrays
+  const LOOKBACK=5;
+  let emaCross=false, emaCrossShort=false;
+  for(let d=0;d<LOOKBACK&&(n-1-d)>0;d++){
+    const cur21=e21[n-1-d], cur50=e50[n-1-d];
+    const prv21=e21[n-2-d], prv50=e50[n-2-d];
+    if(cur21!=null&&cur50!=null&&prv21!=null&&prv50!=null){
+      if(cur21>cur50&&prv21<=prv50){emaCross=true;break;}      // LONG cross
+      if(cur21<cur50&&prv21>=prv50){emaCrossShort=true;break;} // SHORT cross
+    }
+  }
+  let rs3m=null;
+  if(spyRet3m!==null&&n>63)rs3m=(close0/closes[n-1-63]-1)*100-spyRet3m;
+  const rsOk=rs3m===null||rs3m>rsFilter;
+  let signal='watch';
+  if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
+  else if(priceCrossLong&&above200&&highVol&&rsOk)signal='entry';
+  else if(above50&&above200&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
+  else if(emaCrossShort||priceCrossShort)signal='short';
+  return{ticker,close:close0,above50,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21};
+}
+
+// ── RECALCULATE ──────────────────────────────────────────────────────────────
+function getCurrentParams(){
+  return ['rs-filter','ema-tol','vol-mult','vol-lookback','entry-max-dist','entry-lookback']
+    .reduce((o,id)=>{const el=document.getElementById(id);o[id]=el?el.value:'';return o;},{});
+}
+function checkParamsDirty(){
+  const cur=getCurrentParams();
+  const hasScan=Object.keys(rawBarsCache).length>0;
+  const dirty=hasScan&&Object.keys(cur).some(k=>String(cur[k])!==String(lastAppliedParams[k]));
+  const btn=document.getElementById('recalc-btn');
+  const status=document.getElementById('recalc-status');
+  if(btn){btn.disabled=!dirty;btn.style.opacity=dirty?'1':'0.4';}
+  if(status){
+    if(dirty){status.textContent='⚠ פרמטרים שונו — לחץ להחלה';status.style.color='var(--amber)';}
+    else if(status.textContent.startsWith('⚠')){status.textContent='';}
+  }
+}
+function recalcFromCache(){
+  const cached=Object.keys(rawBarsCache);
+  const statusEl=document.getElementById('recalc-status');
+  const btn=document.getElementById('recalc-btn');
+  if(!cached.length){
+    if(statusEl){statusEl.textContent='⚠ אין נתונים — בצע סריקה תחילה';statusEl.style.color='var(--red)';}
+    addLog('⚠ אין נתונים בזיכרון — בצע סריקה תחילה','le');
+    return;
+  }
+  if(statusEl){statusEl.textContent='מחשב...';statusEl.style.color='var(--muted)';}
+  if(btn)btn.disabled=true;
+  setTimeout(()=>{
+    addLog('♻ מחשב מחדש ('+cached.length+' טיקרים)...','li');
+    results=results.map(r=>{
+      if(r.error)return r;
+      const bars=rawBarsCache[r.ticker];
+      if(!bars)return r;
+      return analyzeTicker(r.ticker,bars,spyRet3mCache);
+    });
+    updateStats();renderTable();
+    lastAppliedParams=getCurrentParams();
+    const now=new Date().toLocaleTimeString('he-IL');
+    if(statusEl){statusEl.textContent='✓ עודכן ב-'+now;statusEl.style.color='var(--green)';}
+    // Re-enable button — gray until next change
+    if(btn){btn.disabled=true;btn.style.opacity='0.4';}
+    addLog('✓ חישוב מחדש הסתיים — '+results.filter(r=>!r.error).length+' תוצאות','lo');
+    // Save raw bars cache to localStorage for cross-session use
+    try{
+      const cacheEntries=Object.entries(rawBarsCache).map(([t,bars])=>([t,bars]));
+      localStorage.setItem('ema_bars_cache',JSON.stringify({ts:Date.now(),cache:cacheEntries}));
+    }catch(_){}
+    try{
+      const resData={ts:Date.now(),data:results};
+      localStorage.setItem('ema_results',JSON.stringify(resData));
+      apiPost('cache/results',resData);
+    }catch(_){}
+  },30);
+}
+
+async function startScan(){
+  if(scanning)return;
+  if(!TOKEN()){addLog('✗ הכנס API token','le');return;}
+  const tickers=getTickers();
+  if(!tickers.length){addLog('✗ הכנס טיקרים','le');return;}
+  scanning=true;stopFlag=false;results=[];rawBarsCache={};
+  selectedTickers.clear();updateSelCount();
+  document.getElementById('scan-btn').disabled=true;
+  document.getElementById('dot').className='dot scanning';
+  document.getElementById('progress-bar').className='progress-bar show';
+  document.getElementById('progress-label').className='progress-label show';
+  addLog(`סריקה: ${tickers.length} טיקרים`,'li');
+  let spyRet3m=null;
+  try{
+    addLog('מושך SPY...','');
+    const spy=await fetchHistory('SPY',320);
+    if(spy.length>63){const c=spy.map(b=>b.close);spyRet3m=(c[c.length-1]/c[c.length-1-63]-1)*100;spyRet3mCache=spyRet3m;}
+    addLog('✓ SPY OK','lo');
+  }catch(e){addLog('⚠ SPY: '+e.message,'le');}
+  const BATCH=Math.max(1,Math.min(10,parseInt(document.getElementById('batch-size').value)||5));
+  let done=0;
+  for(let i=0;i<tickers.length;i+=BATCH){
+    if(stopFlag){addLog('⛔ הופסק','le');break;}
+    const batch=tickers.slice(i,i+BATCH);
+    const batchRes=await Promise.all(batch.map(async t=>{
+      try{
+        const bars=await fetchHistory(t,320);
+        rawBarsCache[t]=bars; // save raw data
+        return analyzeTicker(t,bars,spyRet3m);
+      }
+      catch(e){return{ticker:t,error:e.message};}
+    }));
+    batchRes.forEach(r=>{
+      results.push(r);
+      if(r.error)addLog('✗ '+r.ticker+': '+r.error,'le');
+      else addLog('✓ '+r.ticker+' $'+r.close.toFixed(2)+(r.signal==='strong'?' 🔥':r.signal==='mid'?' ⭐':''),'lo');
+    });
+    done+=batch.length;
+    const pct=Math.round(done/tickers.length*100);
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('progress-label').textContent=done+' / '+tickers.length+' ('+pct+'%)';
+    updateStats();renderTable();
+    if(i+BATCH<tickers.length)await new Promise(r=>setTimeout(r,300));
+  }
+  scanning=false;
+  document.getElementById('scan-btn').disabled=false;
+  document.getElementById('dot').className='dot on';
+  document.getElementById('last-scan-label').textContent='עודכן: '+new Date().toLocaleTimeString('he-IL');
+  addLog('✅ '+results.filter(r=>!r.error).length+'/'+tickers.length+' נסרקו','lo');
+  // Save bars cache to localStorage
+  try{
+    const cacheEntries=Object.entries(rawBarsCache);
+    localStorage.setItem('ema_bars_cache',JSON.stringify({ts:Date.now(),cache:cacheEntries}));
+  }catch(_){}
+  lastAppliedParams=getCurrentParams();
+  checkParamsDirty();
+  try{localStorage.setItem('ema_results',JSON.stringify({ts:Date.now(),data:results}));}catch(_){}
+}
+function stopScan(){stopFlag=true;scanning=false;document.getElementById('scan-btn').disabled=false;document.getElementById('dot').className='dot';}
+
+function getNY(){return new Date(new Date().toLocaleString('en-US',{timeZone:'America/New_York'}));}
+function isWD(d){return d.getDay()>0&&d.getDay()<6;}
+function getNextScan(){const n=getNY(),t=new Date(n);t.setHours(16,5,0,0);if(n>=t||!isWD(n)){t.setDate(t.getDate()+1);while(!isWD(t))t.setDate(t.getDate()+1);t.setHours(16,5,0,0);}return t;}
+function updateClock(){
+  document.getElementById('local-clock').textContent=new Date().toLocaleTimeString('he-IL');
+  const ny=getNY(),next=getNextScan(),ms=next-ny;
+  const h=Math.floor(ms/3600000),m=Math.floor((ms%3600000)/60000);
+  document.getElementById('next-scan-time').textContent=ms<60000?'עוד פחות מדקה!':h>23?'מחר 16:05 ET':`עוד ${h}ש' ${m}ד'`;
+  const min=ny.getHours()*60+ny.getMinutes(),wd=ny.getDay();
+  const b=document.getElementById('market-badge');
+  if(wd===0||wd===6){b.textContent='סוף שבוע';b.className='badge badge-amber';}
+  else if(min>=570&&min<960){b.textContent='שוק פתוח';b.className='badge badge-green';}
+  else if(min>=960){b.textContent='שוק סגור';b.className='badge badge-amber';}
+  else{b.textContent='טרום מסחר';b.className='badge badge-blue';}
+}
+// Auto-save to server at end of day (after 16:10 ET)
+function scheduleEndOfDaySave(){
+  const now=new Date();
+  const et=new Date(now.toLocaleString('en-US',{timeZone:'America/New_York'}));
+  const target=new Date(et);
+  target.setHours(16,10,0,0);
+  if(et>target) target.setDate(target.getDate()+1);
+  const ms=target-et;
+  setTimeout(async()=>{
+    addLog('⏰ שמירה אוטומטית סוף יום...','li');
+    await exportToServer();
+    scheduleEndOfDaySave();
+  },ms);
+}
+
+function scheduleAuto(){
+  if(autoScanTimer)clearTimeout(autoScanTimer);
+  const ms=getNextScan()-getNY();
+  autoScanTimer=setTimeout(()=>{addLog('⏰ הרצה אוטומטית','li');startScan().then(scheduleAuto);},ms);
+  addLog('תזמון: '+Math.round(ms/60000)+'ד\'','');
+}
+
+function setEnv(e){tradierEnv=e;document.getElementById('btn-sandbox').className=e==='sandbox'?'active':'';document.getElementById('btn-live').className=e==='live'?'active':'';localStorage.setItem('tradier_env',e);}
+async function testConnection(){
+  if(!TOKEN()){addLog("✗ הכנס token","le");return;}
+  addLog("שולח בקשה ל-Tradier ["+tradierEnv+"]...","li");
+  addLog("URL: "+BASE()+"/markets/clock","");
+  try{
+    const d=await tGet("/markets/clock");
+    addLog("✓ מחובר | שוק: "+(d.clock?.state||"?"),"lo");
+    document.getElementById("dot").className="dot on";
+  }catch(e){
+    const msg=e.message||String(e);
+    addLog("✗ שגיאה: "+msg,"le");
+    if(msg.includes("401"))      addLog("→ token לא תקין, או בחר sandbox/live בהתאם ל-token","li");
+    else if(msg.includes("timeout")) addLog("→ הבקשה לא הגיעה לשרת — בדוק חיבור אינטרנט","li");
+    else if(msg.includes("fetch")||msg.includes("Failed")||msg.includes("CORS"))
+      addLog("→ שגיאת CORS — ודא שה-token נכון ו-sandbox/live מתאים","li");
+  }
+}
+function saveConfig(){
+  localStorage.setItem('tradier_token',TOKEN());
+  localStorage.setItem('tradier_account',ACCT());
+  addLog('✓ נשמר','lo');
+  // Push to server
+  exportToServer();
+}
+function getTickers(){return document.getElementById('tickers').value.split(/[\n,\s]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);}
+function updateTickerCount(){const t=getTickers();document.getElementById('ticker-count').textContent=t.length?t.length+' טיקרים':'';}
+document.getElementById('tickers').addEventListener('input',updateTickerCount);
+
+if(!INDICES.ibd50){try{const c=JSON.parse(localStorage.getItem('idx_cache_ibd50')||'null');if(c)INDICES.ibd50=c.tickers;}catch(_){}}
+let activeIdxName='custom';
+function loadIdx(name,btn){
+  document.querySelectorAll('.idx-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+  activeIdxName=name;
+  if(name==='custom'){updateTickerCount();return;}
+  const arr=(INDICES[name]||'').split(',').map(t=>t.trim()).filter(Boolean);
+  document.getElementById('tickers').value=arr.join('\n');
+  updateTickerCount();addLog('✓ '+name.toUpperCase()+': '+arr.length,'lo');
+}
+
+// Tradier index symbol mapping
+const IDX_SYMBOLS={
+  sp500:'$SPX.X',
+  nasdaq100:'$NDX.X',
+  iwm:'$RUT.X',
+  dow30:'$DJI'
+};
+
+async function refreshLiveIndex(){
+  if(activeIdxName==='custom'){
+    setRefreshStatus('Select an index first','');return;
+  }
+  const btn=document.getElementById('refresh-idx-btn');
+  btn.disabled=true;btn.textContent='🔄 Fetching...';
+  // Check cache first (7 days)
+  try{
+    const cached=JSON.parse(localStorage.getItem('idx_cache_'+activeIdxName)||'null');
+    if(cached&&Date.now()-cached.ts<7*24*3600*1000){
+      applyIndexList(cached.tickers);
+      const age=Math.round((Date.now()-cached.ts)/86400000);
+      setRefreshStatus(`✓ From cache (${age}d old, ${cached.tickers.split(',').length} tickers)`,'lo');
+      btn.disabled=false;btn.textContent='🔄 Update index tickers';
+      return;
+    }
+  }catch(_){}
+  await fetchIndexCSV(activeIdxName);
+  btn.disabled=false;btn.textContent='🔄 Update index tickers';
+}
+
+function applyIndexList(tickerStr){
+  document.getElementById('tickers').value=tickerStr.split(',').join('\n');
+  updateTickerCount();
+}
+function setRefreshStatus(msg,cls){
+  const el=document.getElementById('idx-refresh-status');
+  el.textContent=msg;
+  el.style.color=cls==='lo'?'var(--green)':cls==='le'?'var(--red)':cls==='li'?'var(--accent)':'var(--muted)';
+}
+function addLog(msg,cls=''){
+  const log=document.getElementById('log');
+  const d=document.createElement('div');d.className='ll'+(cls?' '+cls:'');
+  d.textContent=new Date().toLocaleTimeString('he-IL')+'  '+msg;
+  log.appendChild(d);
+  while(log.children.length>150) log.removeChild(log.firstChild);
+  log.scrollTop=log.scrollHeight;
+}
+function updateStats(){
+  const v=results.filter(r=>!r.error);
+  document.getElementById('s-total').textContent=v.length;
+  document.getElementById('s-strong').textContent=v.filter(r=>r.signal==='strong').length;
+  document.getElementById('s-mid').textContent=v.filter(r=>r.signal==='mid').length;
+  document.getElementById('s-cross').textContent=v.filter(r=>r.emaCross).length;
+  document.getElementById('s-err').textContent=results.filter(r=>r.error).length;
+  const entryEl=document.getElementById('s-entry');
+  if(entryEl)entryEl.textContent=v.filter(r=>r.signal==='entry').length;
+}
+
+function toggleSelect(ticker,checked){checked?selectedTickers.add(ticker):selectedTickers.delete(ticker);updateSelCount();document.querySelectorAll('tr[data-t]').forEach(tr=>{tr.className=selectedTickers.has(tr.dataset.t)?'selected':'';}); }
+function toggleSelectAll(checked){getVisibleData().forEach(r=>checked?selectedTickers.add(r.ticker):selectedTickers.delete(r.ticker));updateSelCount();renderTable();}
+function updateSelCount(){const n=selectedTickers.size;document.getElementById('sel-count').textContent=n;document.getElementById('trade-btn').disabled=n===0;const vis=getVisibleData();document.getElementById('select-all').checked=vis.length>0&&vis.every(r=>selectedTickers.has(r.ticker));}
+function getVisibleData(){
+  const s=document.getElementById('search-input').value.toLowerCase();
+  let d=results.filter(r=>!r.error);
+  if(s)d=d.filter(r=>r.ticker.toLowerCase().includes(s));
+  if(currentFilter==='strong')d=d.filter(r=>r.signal==='strong');
+  else if(currentFilter==='mid')d=d.filter(r=>r.signal==='mid');
+  else if(currentFilter==='cross')d=d.filter(r=>r.emaCross||r.emaCrossShort);
+  else if(currentFilter==='above200')d=d.filter(r=>r.above200);
+  else if(currentFilter==='short')d=d.filter(r=>r.emaCrossShort||r.priceCrossShort);
+  else if(currentFilter==='entry')d=d.filter(r=>r.priceCrossLong);
+  return d;
+}
+function setFilter(f,btn){currentFilter=f;document.querySelectorAll('.fbtn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderTable();updateSelCount();}
+function sortBy(col){sortDir=sortCol===col?sortDir*-1:-1;sortCol=col;renderTable();}
+function renderTable(){
+  let d=getVisibleData();
+  d.sort((a,b)=>{let va=a[sortCol],vb=b[sortCol];if(typeof va==='boolean'){va=va?1:0;vb=vb?1:0;}if(sortCol==='signal'){const m={strong:5,entry:4,mid:3,watch:1,short:2};va=m[va]||0;vb=m[vb]||0;}if(va==null)va=-Infinity;if(vb==null)vb=-Infinity;return(va>vb?1:va<vb?-1:0)*sortDir;});
+  const tbody=document.getElementById('table-body');
+  if(!d.length){tbody.innerHTML='<tr><td colspan="11"><div class="empty-state">אין תוצאות</div></td></tr>';return;}
+  const pill=(v,t,f)=>v===null?'<span class="pill pw">N/A</span>':v?'<span class="pill py">'+t+'</span>':'<span class="pill pn">'+f+'</span>';
+  tbody.innerHTML=d.map((r,i)=>{
+    const sel=selectedTickers.has(r.ticker);
+    const sig=r.signal==='strong'?'<span class="pill ps">🔥 IBD50+Cross</span>':
+      r.signal==='entry'?'<span class="pill" style="background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3)">🎯 Price Entry</span>':
+      r.signal==='mid'?'<span class="pill pm">⭐ Near IBD</span>':
+      r.signal==='short'?'<span class="pill" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)">🔴 SHORT Cross</span>':
+      '<span class="pill pw">Watch</span>';
+    const rs=r.rs3m!=null?'<span class="'+(r.rs3m>=0?'rp':'rn')+'">'+(r.rs3m>0?'+':'')+r.rs3m.toFixed(1)+'%</span>':'<span style="color:var(--muted)">N/A</span>';
+    return`<tr data-t="${r.ticker}" class="${sel?'selected':''}" onclick="rowClick(event,'${r.ticker}')"><td><input type="checkbox" ${sel?'checked':''} onclick="event.stopPropagation();toggleSelect('${r.ticker}',this.checked)"/></td><td><span class="tc">${i+1}. ${r.ticker}</span></td><td>$${r.close.toFixed(2)}</td>
+<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.above50?'#4ade80':'#fca5a5'}">${r.sma50val!=null?r.sma50val.toFixed(2):'N/A'}</span></td>
+<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.above200?'#4ade80':'#fca5a5'}">${r.sma200val!=null?r.sma200val.toFixed(2):'N/A'}</span></td>
+<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.aboveEMA21?'#4ade80':'#fca5a5'}">${r.ema21val!=null?r.ema21val.toFixed(2):'N/A'}</span></td>
+<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.ema21val!=null&&r.ema50val!=null?(r.ema21val>r.ema50val?'#4ade80':'#fca5a5'):'var(--muted)'}">${r.ema50val!=null?r.ema50val.toFixed(2):'N/A'}</span></td>
+<td>${(r.atr!=null&&!isNaN(r.atr)&&r.close>0)?`<span style="font-family:'SF Mono',monospace;font-size:12px;color:var(--amber)">$${r.atr.toFixed(2)}</span> <span style="font-size:10px;color:var(--muted)">(${(r.atr/r.close*100).toFixed(1)}%)</span>`:'<span style="color:var(--muted)">—</span>'}</td><td>${pill(r.breakout,'פריצה ✓','לא')}</td><td>${r.volRatio!=null?`<span class="pill" style="background:${r.highVol?'rgba(74,222,128,.12)':'rgba(100,100,100,.1)'};color:${r.highVol?'#4ade80':'var(--muted)'};border:1px solid ${r.highVol?'rgba(74,222,128,.3)':'var(--border2)'};font-size:11px;">${r.volRatio.toFixed(1)}x${r.highVolDaysAgo>0?' ('+r.highVolDaysAgo+'d)':''}</span>`:pill(r.highVol,'גבוה ✓','רגיל')}</td><td>${r.emaCross?'<span class="pill pc">🟢 LONG</span>':r.emaCrossShort?'<span class="pill" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)">🔴 SHORT</span>':r.priceCrossLong?`<span class="pill" style="background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3)">🎯 P-Entry ${r.distFromEMA21!=null?'(+'+(r.distFromEMA21*100).toFixed(1)+'%)':''}</span>`:r.priceCrossShort?'<span class="pill" style="background:rgba(239,68,68,.10);color:#fca5a5">📉 P-Exit</span>':'<span class="pill pw">—</span>'}</td><td>${rs}</td><td>${sig}</td></tr>`;
+  }).join('');
+}
+function rowClick(e,t){if(e.target.type==='checkbox')return;toggleSelect(t,!selectedTickers.has(t));renderTable();}
+
+function openTradeModal(){
+  if(!selectedTickers.size)return;
+  document.getElementById('modal-chips').innerHTML=[...selectedTickers].map(t=>`<span class="chip">${t}</span>`).join('');
+  document.getElementById('order-results').style.display='none';
+  document.getElementById('order-results').innerHTML='';
+  // Build stop preview
+  const mult=parseFloat((document.getElementById('atr-mult')||{value:'1.5'}).value)||1.5;
+  document.getElementById('stop-mult-display').textContent=mult;
+  const lines=[];
+  selectedTickers.forEach(t=>{
+    const r=results.find(x=>x.ticker===t);
+    if(r&&r.atr!=null){
+      const stop=(r.close-r.atr*mult).toFixed(2);
+      lines.push(`<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid var(--border)"><span style="font-family:'SF Mono',monospace;font-weight:600">${t}</span><span>$${r.close.toFixed(2)} &minus; $${(r.atr*mult).toFixed(2)} = <span style="color:var(--red);font-weight:600">Stop $${stop}</span></span></div>`);
+    }else{
+      lines.push(`<div style="color:var(--muted);font-size:11px">${t}: ATR not available</div>`);
+    }
+  });
+  document.getElementById('stop-lines').innerHTML=lines.join('');
+  document.getElementById('stop-preview').style.display='block';
+  document.getElementById('order-modal').className='modal-overlay show';
+  updateTradeTotal();
+  document.getElementById('order-qty').oninput=updateTradeTotal;
+}
+
+function updateTradeTotal(){
+  const qty=parseFloat(document.getElementById('order-qty').value)||0;
+  if(!qty||!selectedTickers.size){
+    document.getElementById('trade-total').style.display='none';
+    return;
+  }
+  const lines=[];
+  let grand=0;
+  selectedTickers.forEach(t=>{
+    const r=results.find(x=>x.ticker===t);
+    if(r&&r.close){
+      const val=r.close*qty;
+      grand+=val;
+      lines.push(`<div style="display:flex;justify-content:space-between;padding:2px 0;font-size:12px;">
+        <span style="font-family:'SF Mono',monospace;font-weight:600;color:var(--text)">${t}</span>
+        <span style="color:var(--muted)">$${r.close.toFixed(2)} × ${qty} = <span style="color:var(--text);font-weight:500">$${val.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></span>
+      </div>`);
+    }
+  });
+  document.getElementById('trade-total-lines').innerHTML=lines.join('');
+  document.getElementById('trade-grand-total').textContent='$'+grand.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('trade-total').style.display='block';
+}
+function closeTradeModal(){document.getElementById('order-modal').className='modal-overlay';}
+// ── TRADE LOG ─────────────────────────────────────────────────────────────────
+// getTradeLog / saveTradeLog — defined in API bridge above (server-first)
+// Do not redefine here
+function addTradeEntry(entry){
+  const log=getTradeLog();
+  log.unshift(entry); // newest first
+  saveTradeLog(log);
+  updateTradeLogBadge();
+}
+function updateTradeLogBadge(){
+  const log=getTradeLog();
+  const badge=document.getElementById('trade-log-badge');
+  if(!badge)return;
+  if(log.length>0){badge.textContent=log.length;badge.style.display='inline';}
+  else badge.style.display='none';
+}
+
+// Poll order status until filled or failed (max 60s)
+async function pollOrderStatus(orderId, maxWaitMs=60000){
+  const start=Date.now();
+  while(Date.now()-start<maxWaitMs){
+    await new Promise(r=>setTimeout(r,3000));
+    try{
+      const d=await tGet('/accounts/'+ACCT()+'/orders/'+orderId);
+      const status=d.order?.status;
+      if(status==='filled')return d.order;
+      if(status==='canceled'||status==='rejected'||status==='expired')
+        throw new Error('Order '+status+': '+orderId);
+    }catch(e){throw e;}
+  }
+  throw new Error('Timeout polling order '+orderId);
+}
+
+async function submitOrders(){
+  if(!TOKEN()||!ACCT()){alert('Missing token or Account ID');return;}
+  const btn=document.getElementById('submit-btn');btn.disabled=true;btn.textContent='Sending...';
+  const side=document.getElementById('order-side').value;
+  const type=document.getElementById('order-type').value;
+  const qty=parseFloat(document.getElementById('order-qty').value)||1;
+  const price=document.getElementById('order-price').value;
+  const dur=document.getElementById('order-dur').value;
+  const mult=parseFloat((document.getElementById('atr-mult')||{value:'1.5'}).value)||1.5;
+  const res=document.getElementById('order-results');res.style.display='block';res.innerHTML='';
+
+  for(const t of selectedTickers){
+    const scanResult=results.find(x=>x.ticker===t);
+    const entryPrice=scanResult?scanResult.close:null;
+
+    // 1. Send main order
+    const body={class:'equity',symbol:t,side,quantity:qty,type,duration:dur};
+    if(type!=='market'&&price)body.price=price;
+    let orderId=null;
+    try{
+      const d=await tPost('/accounts/'+ACCT()+'/orders',body);
+      orderId=d.order?.id;
+      res.innerHTML+=`<div style="color:var(--green)">✓ ${t} — ${side.toUpperCase()} ${qty} @ ${type==='market'?'שוק':'$'+price} | Order ID: ${orderId}</div>`;
+      addLog('✓ '+t+' '+side.toUpperCase()+' sent — ID: '+orderId,'lo');
+    }catch(e){
+      res.innerHTML+=`<div style="color:var(--red)">✗ ${t}: ${e.message}</div>`;
+      addTradeEntry({id:Date.now(),ticker:t,side,qty,type,price:entryPrice,status:'failed',error:e.message,ts:new Date().toISOString(),stopId:null,stopPrice:null,pnl:null});
+      await new Promise(r=>setTimeout(r,150));
+      continue;
+    }
+
+    // 2. Log pending trade
+    const tradeEntry={id:orderId,ticker:t,side,qty,type,price:entryPrice,status:'pending',ts:new Date().toISOString(),stopId:null,stopPrice:null,pnl:null,orderId};
+    addTradeEntry(tradeEntry);
+
+    // 3. For BUY orders — poll for fill then send stop
+    if(side==='buy'&&scanResult?.atr!=null){
+      const stopPrice=+(entryPrice-scanResult.atr*mult).toFixed(2);
+      res.innerHTML+=`<div style="color:var(--muted);font-size:11px;">  ↳ ממתין לאישור מילוי... ואז שולח Stop @ $${stopPrice}</div>`;
+      
+      // Poll in background
+      (async()=>{
+        try{
+          const filledOrder=await pollOrderStatus(orderId,90000);
+          const fillPrice=parseFloat(filledOrder.avg_fill_price||entryPrice)||entryPrice;
+          res.innerHTML+=`<div style="color:var(--green);font-size:11px;">  ↳ ✓ מולא @ $${fillPrice}</div>`;
+          
+          // Auto stop disabled — use "+ סטופ" button in trade log
+          
+          // Update trade log entry
+          const log=getTradeLog();
+          const idx=log.findIndex(e=>e.orderId===orderId);
+          if(idx>=0){log[idx].status='open';log[idx].fillPrice=fillPrice;log[idx].stopId=stopId;log[idx].stopPrice=stopPrice;}
+          // Add stop order as separate SELL row in log (linked to buy via orderId)
+          const stopEntry={
+            id:'stop_'+stopId, orderId:String(stopId),
+            ticker:t, side:'sell', qty, type:'stop',
+            price:stopPrice, fillPrice:null,
+            status:'pending', ts:new Date().toISOString(),
+            stopId:null, stopPrice:null, pnl:null,
+            linkedBuyOrderId:String(orderId), source:'stop'
+          };
+          log.unshift(stopEntry);
+          saveTradeLog(log);updateTradeLogBadge();
+        }catch(e){
+          res.innerHTML+=`<div style="color:var(--red);font-size:11px;">  ↳ ✗ ${e.message}</div>`;
+          addLog('✗ '+t+' poll/stop error: '+e.message,'le');
+          const log=getTradeLog();
+          const idx=log.findIndex(e=>e.orderId===orderId);
+          if(idx>=0){log[idx].status='stop_failed';log[idx].error=e.message;}
+          saveTradeLog(log);
+        }
+      })();
+    }else if(side==='sell'){
+      // For sell — calculate P&L from log
+      (async()=>{
+        try{
+          const filledOrder=await pollOrderStatus(orderId,90000);
+          const fillPrice=parseFloat(filledOrder.avg_fill_price)||entryPrice;
+          const log=getTradeLog();
+          // Find matching open buy
+          const buyIdx=log.findIndex(e=>e.ticker===t&&e.side==='buy'&&e.status==='open');
+          if(buyIdx>=0){
+            const buyPrice=log[buyIdx].fillPrice||log[buyIdx].price||0;
+            const pnl=(fillPrice-buyPrice)*qty;
+            log[buyIdx].status='closed';log[buyIdx].pnl=pnl;log[buyIdx].closePrice=fillPrice;log[buyIdx].closeTs=new Date().toISOString();
+            saveTradeLog(log);updateTradeLogBadge();
+            res.innerHTML+=`<div style="color:${pnl>=0?'var(--green)':'var(--red)'};font-size:11px;">  ↳ ${pnl>=0?'✓ רווח':'✗ הפסד'}: $${pnl.toFixed(2)} (${((pnl/(buyPrice*qty))*100).toFixed(1)}%)</div>`;
+          }
+        }catch(_){}
+      })();
+    }
+
+    await new Promise(r=>setTimeout(r,200));
+  }
+  btn.disabled=false;btn.textContent='Send Orders';
+}
+
+function exportCSV(){
+  const v=results.filter(r=>!r.error);if(!v.length)return;
+  const h=['Ticker','Close','SMA50','SMA200','EMA21','Breakout50D','HighVol','EMACross','RS_SPY_3M','Signal'];
+  const rows=v.map(r=>[r.ticker,r.close.toFixed(2),r.above50??'N/A',r.above200??'N/A',r.aboveEMA21?'Yes':'No',r.breakout??'N/A',r.highVol??'N/A',r.emaCross?'Yes':'No',r.rs3m!=null?r.rs3m.toFixed(1)+'%':'N/A',r.signal]);
+  const csv=[h,...rows].map(r=>r.join(',')).join('\n');
+  try{
+    const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='scan.csv';document.body.appendChild(a);a.click();document.body.removeChild(a);
+  }catch(_){
+    const ta=document.createElement('textarea');ta.value=csv;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);alert('CSV הועתק ללוח — הדבק ב-Excel');
+  }
+}
+
+// ── COPY-TO-SAVE MODAL ────────────────────────────────────────────────────────
+function openCopyModal(){
+  const html=document.documentElement.outerHTML;
+  document.getElementById('code-area').value=html;
+  document.getElementById('copy-modal').className='modal-overlay show';
+  setTimeout(()=>document.getElementById('code-area').select(),100);
+}
+async function copyCode(){
+  const ta=document.getElementById('code-area');
+  ta.select();
+  let ok=false;
+  try{await navigator.clipboard.writeText(ta.value);ok=true;}catch(_){try{document.execCommand('copy');ok=true;}catch(__){}}
+  const btn=document.getElementById('copy-btn');
+  btn.textContent=ok?'✓ הועתק! עכשיו פתח Notepad → Ctrl+V → שמור .html':'בחר הכל ידנית (Ctrl+A) ואז Ctrl+C';
+  btn.style.background=ok?'var(--green)':'var(--red)';
+  setTimeout(()=>{btn.textContent='📋 העתק הכל';btn.style.background='';},3000);
+}
+
+// ── LIST MANAGER ─────────────────────────────────────────────────────────────
+// ── MY LISTS ─────────────────────────────────────────────────────────────────
+// getLists / saveLists — defined in API bridge above (server-first)
+// Do not redefine here
+
+let editingListName=null; // null = new list, string = editing existing
+
+function openMyListModal(editName){
+  editingListName=editName||null;
+  const title=document.getElementById('mylist-modal-title');
+  const nameInput=document.getElementById('mylist-name');
+  const tickersArea=document.getElementById('mylist-tickers');
+  if(editName){
+    title.textContent='✏ עריכת רשימה: '+editName;
+    nameInput.value=editName;
+    const lists=getLists();
+    const tickers=lists[editName]||[];
+    tickersArea.value=Array.isArray(tickers)?tickers.join('\n'):tickers.split(',').join('\n');
+  } else {
+    title.textContent='⊕ רשימה חדשה';
+    nameInput.value='';
+    tickersArea.value='';
+  }
+  mylistUpdateCount();
+  tickersArea.addEventListener('input',mylistUpdateCount);
+  document.getElementById('mylist-modal').className='modal-overlay show';
+  setTimeout(()=>nameInput.focus(),100);
+}
+
+function closeMyListModal(){
+  document.getElementById('mylist-modal').className='modal-overlay';
+}
+
+function mylistUpdateCount(){
+  const t=parsePastedTickers(document.getElementById('mylist-tickers').value);
+  document.getElementById('mylist-count').textContent=t.length+' טיקרים';
+  document.getElementById('mylist-count').style.color=t.length>0?'var(--green)':'var(--muted)';
+}
+
+async function mylistPasteFromClipboard(){
+  try{
+    const text=await navigator.clipboard.readText();
+    document.getElementById('mylist-tickers').value=text;
+    mylistUpdateCount();
+  }catch(_){
+    document.getElementById('mylist-tickers').focus();
+    document.execCommand('paste');
+    mylistUpdateCount();
+  }
+}
+
+function mylistCopyToClipboard(){
+  const text=document.getElementById('mylist-tickers').value;
+  navigator.clipboard.writeText(text).then(()=>{
+    addLog('✓ הטיקרים הועתקו ללוח','lo');
+  }).catch(()=>{
+    const ta=document.getElementById('mylist-tickers');
+    ta.select();document.execCommand('copy');
+    addLog('✓ הועתק','lo');
+  });
+}
+
+function mylistSortTickers(){
+  const t=parsePastedTickers(document.getElementById('mylist-tickers').value).sort();
+  document.getElementById('mylist-tickers').value=t.join('\n');
+  mylistUpdateCount();
+}
+
+function mylistDedupe(){
+  const t=parsePastedTickers(document.getElementById('mylist-tickers').value);
+  document.getElementById('mylist-tickers').value=[...new Set(t)].join('\n');
+  mylistUpdateCount();
+}
+
+function saveMyList(){
+  const name=document.getElementById('mylist-name').value.trim();
+  if(!name){alert('הכנס שם לרשימה');return;}
+  const tickers=parsePastedTickers(document.getElementById('mylist-tickers').value);
+  if(!tickers.length){alert('אין טיקרים תקינים');return;}
+  const lists=getLists();
+  // If renaming — delete old key
+  if(editingListName&&editingListName!==name){
+    delete lists[editingListName];
+    addLog('✓ שם שונה: '+editingListName+' → '+name,'lo');
+  }
+  lists[name]=tickers;
+  saveLists(lists);
+  renderListBtns();
+  addLog('✓ נשמרה רשימה "'+name+'" — '+tickers.length+' טיקרים','lo');
+  closeMyListModal();
+  // Auto-load the saved list
+  loadList(name);
+}
+
+function deleteList(name){
+  if(!confirm('למחוק את הרשימה "'+name+'"?'))return;
+  const lists=getLists();
+  delete lists[name];
+  saveLists(lists);
+  renderListBtns();
+  addLog('נמחקה רשימה: '+name,'');
+}
+
+function loadList(name){
+  const lists=getLists();
+  if(!lists[name])return;
+  const tickers=lists[name];
+  document.getElementById('tickers').value=Array.isArray(tickers)?tickers.join('\n'):tickers;
+  updateTickerCount();
+  document.querySelectorAll('.idx-btn').forEach(b=>b.classList.remove('active'));
+  addLog('✓ נטענה "'+name+'" — '+(Array.isArray(tickers)?tickers.length:tickers.split(',').length)+' טיקרים','li');
+}
+
+function renderListBtns(){
+  const lists=getLists();
+  const container=document.getElementById('custom-list-btns');
+  if(!container)return;
+  const names=Object.keys(lists);
+  if(!names.length){
+    container.innerHTML='<div style="font-size:11px;color:var(--muted);padding:4px 0;">אין רשימות שמורות</div>';
+    return;
+  }
+  container.innerHTML=names.map(name=>{
+    const tickers=lists[name];
+    const count=Array.isArray(tickers)?tickers.length:(tickers||'').split(',').filter(Boolean).length;
+    return`<div style="display:flex;align-items:center;gap:4px;">
+      <button class="idx-btn" style="flex:1;text-align:right;justify-content:flex-start;" onclick="loadList('${name.replace(/'/g,"\'")}')">
+        ${name} <span style="font-size:10px;color:var(--muted);margin-right:4px;">(${count})</span>
+      </button>
+      <button class="btn-secondary btn-sm" style="padding:3px 7px;font-size:11px;" title="ערוך" onclick="openMyListModal('${name.replace(/'/g,"\'")}')">✏</button>
+      <button class="btn-secondary btn-sm" style="padding:3px 7px;font-size:11px;color:var(--red);" title="מחק" onclick="deleteList('${name.replace(/'/g,"\'")}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+function clearTickers(){document.getElementById('tickers').value='';updateTickerCount();}
+function sortTickers(){const t=getTickers().sort();document.getElementById('tickers').value=t.join('\n');updateTickerCount();}
+function dedupeTickers(){const t=[...new Set(getTickers())];document.getElementById('tickers').value=t.join('\n');updateTickerCount();addLog('Deduped — '+t.length+' unique tickers','lo');}
+
+// ── WIKIPEDIA INDEX FETCH ─────────────────────────────────────────────────────
+// Wikipedia API supports CORS with origin=* — no proxy needed
+const IDX_WIKI={
+  sp500:    {page:'List_of_S%26P_500_companies', col:0, tableIdx:0, label:'S&P 500'},
+  nasdaq100:{page:'Nasdaq-100',                  col:1, tableIdx:4, label:'Nasdaq 100'},
+  dow30:    {page:'Dow_Jones_Industrial_Average', col:2, tableIdx:2, label:'Dow 30'},
+  iwm:      {page:null, label:'Russell 2000'},
+  ibd50:    {page:null, label:'IBD 50', ffty:true}
+};
+
+// JSONP fetch — bypasses CORS entirely, works from file:// and any context
+function jsonpFetch(url){
+  return new Promise((resolve,reject)=>{
+    const cb='_wiki_'+Date.now();
+    window[cb]=(data)=>{
+      resolve(data);
+      delete window[cb];
+      const s=document.getElementById('_wiki_script');
+      if(s)s.remove();
+    };
+    const script=document.createElement('script');
+    script.id='_wiki_script';
+    script.src=url+'&callback='+cb;
+    script.onerror=()=>reject(new Error('Script load failed'));
+    document.head.appendChild(script);
+    // Timeout after 15s
+    setTimeout(()=>{
+      if(window[cb]){
+        delete window[cb];
+        script.remove();
+        reject(new Error('Timeout — Wikipedia took too long'));
+      }
+    },15000);
+  });
+}
+
+async function fetchIndexCSV(idxName){
+  const cfg=IDX_WIKI[idxName];
+
+  // IBD50 — fetch from innovatoretfs.com FFTY holdings
+  if(cfg&&cfg.ffty){
+    setRefreshStatus('Fetching IBD 50 from innovatoretfs.com...','li');
+    try{
+      // innovatoretfs doesn't support JSONP — use fetch with no-cors won't help
+      // Use their public page via a CORS-friendly endpoint
+      const url='https://api.allorigins.win/get?url='+encodeURIComponent('https://www.innovatoretfs.com/etf/default.aspx?ticker=ffty');
+      const resp=await fetch(url,{signal:AbortSignal.timeout(15000)});
+      if(!resp.ok)throw new Error('HTTP '+resp.status);
+      const data=await resp.json();
+      const html=data.contents;
+      if(!html)throw new Error('No content');
+      const parser=new DOMParser();
+      const doc=parser.parseFromString(html,'text/html');
+      const tables=doc.querySelectorAll('table');
+      let tickers=[];
+      tables.forEach(table=>{
+        table.querySelectorAll('tr').forEach((row,i)=>{
+          if(i===0)return;
+          const cells=row.querySelectorAll('td');
+          cells.forEach(cell=>{
+            const t=cell.textContent.trim().replace(/\[.*?\]/g,'').trim();
+            if(/^[A-Z]{1,5}$/.test(t)&&!tickers.includes(t))tickers.push(t);
+          });
+        });
+      });
+      if(tickers.length<10)throw new Error('Only '+tickers.length+' tickers found');
+      const tickerStr=tickers.join(',');
+      localStorage.setItem('idx_cache_ibd50',JSON.stringify({ts:Date.now(),tickers:tickerStr}));
+      INDICES['ibd50']=tickerStr;
+      applyIndexList(tickerStr);
+      setRefreshStatus('✓ IBD 50: '+tickers.length+' tickers ('+new Date().toLocaleDateString()+')','lo');
+      addLog('✓ IBD 50 updated: '+tickers.length+' tickers','lo');
+    }catch(e){
+      setRefreshStatus('✗ '+e.message+' — paste manually','le');
+      openPasteModal(idxName);
+    }
+    return;
+  }
+
+  if(!cfg||!cfg.page){
+    openPasteModal(idxName);
+    return;
+  }
+  setRefreshStatus('Fetching from Wikipedia...','li');
+  try{
+    // JSONP — no CORS, works from file:// 
+    const url=`https://en.wikipedia.org/w/api.php?action=parse&page=${cfg.page}&prop=text&format=json`;
+    const data=await jsonpFetch(url);
+    const html=data?.parse?.text?.['*'];
+    if(!html)throw new Error('No content returned from Wikipedia');
+
+    // Parse the HTML table
+    const parser=new DOMParser();
+    const doc=parser.parseFromString(html,'text/html');
+    const tables=doc.querySelectorAll('table.wikitable');
+    if(!tables.length)throw new Error('No wikitable found on page');
+    const table=tables[cfg.tableIdx]||tables[0];
+
+    // Extract tickers from the correct column
+    const tickers=[];
+    table.querySelectorAll('tr').forEach((row,i)=>{
+      if(i===0)return;
+      const cells=row.querySelectorAll('td');
+      const cell=cells[cfg.col];
+      if(!cell)return;
+      // Get text, strip footnotes like [1], links, whitespace
+      const text=cell.textContent.trim().replace(/\[\d+\]/g,'').trim();
+      if(/^[A-Z]{1,5}$/.test(text))tickers.push(text);
+    });
+
+    if(tickers.length<5)throw new Error(`Only ${tickers.length} tickers found — table column may have shifted`);
+
+    const tickerStr=[...new Set(tickers)].join(',');
+    localStorage.setItem('idx_cache_'+idxName,JSON.stringify({ts:Date.now(),tickers:tickerStr}));
+    INDICES[idxName]=tickerStr;
+    applyIndexList(tickerStr);
+    setRefreshStatus(`✓ ${tickers.length} tickers from Wikipedia (${new Date().toLocaleDateString()})`,'lo');
+    addLog(`✓ ${cfg.label}: ${tickers.length} tickers`,'lo');
+  }catch(e){
+    setRefreshStatus('✗ '+e.message,'le');
+    addLog('Wikipedia fetch failed: '+e.message+' — using paste fallback','le');
+    openPasteModal(idxName);
+  }
+}
+
+function openPasteModal(idxName){
+  const sources={
+    sp500:    {label:'Wikipedia S&P 500', url:'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies'},
+    nasdaq100:{label:'Wikipedia Nasdaq 100', url:'https://en.wikipedia.org/wiki/Nasdaq-100'},
+    dow30:    {label:'Wikipedia Dow 30', url:'https://en.wikipedia.org/wiki/Dow_Jones_Industrial_Average'},
+    iwm:      {label:'iShares IWM Holdings', url:'https://www.ishares.com/us/products/239710/IWM'},
+    ibd50:    {label:'IBD 50 / FFTY Holdings', url:'https://www.innovatoretfs.com/etf/default.aspx?ticker=ffty'}
+  };
+  const src=sources[idxName]||{label:'Source',url:'#'};
+  document.getElementById('paste-modal-sub').innerHTML=
+    '<b>Step 1:</b> Open the link → copy all ticker symbols → paste below<br>'+
+    '<b>Step 2:</b> Click Apply';
+  document.getElementById('paste-source-links').innerHTML=
+    `<a href="${src.url}" target="_blank" class="btn-primary btn-sm" style="text-decoration:none;display:inline-block;">
+      Open ${src.label} ↗
+    </a>`;
+  document.getElementById('paste-area').value='';
+  document.getElementById('paste-count').textContent='0 tickers detected';
+  document.getElementById('paste-modal').className='modal-overlay show';
+  document.getElementById('paste-area').oninput=countPastedTickers;
+}
+
+function countPastedTickers(){
+  const tickers=parsePastedTickers();
+  document.getElementById('paste-count').textContent=tickers.length+' tickers detected';
+  document.getElementById('paste-count').style.color=tickers.length>5?'var(--green)':'var(--muted)';
+}
+
+function parsePastedTickers(rawInput){
+  // Accept optional rawInput string, else read from paste-area element
+  const raw=rawInput!=null?rawInput:(document.getElementById('paste-area')?.value||'');
+  const upper=raw.toUpperCase();
+  // Step 1: extract EXCHANGE:TICKER format (e.g. NASDAQ:AAPL, NYSE:ORCL, CBOE:ETHU)
+  const withExchange=upper.match(/(?:NASDAQ|NYSE|CBOE|AMEX|BATS|ARCA):[A-Z]{1,5}/g)||[];
+  const fromExchange=withExchange.map(e=>e.split(':')[1]);
+  // Step 2: extract bare tickers (1-5 uppercase letters)
+  const bare=upper.match(/\b[A-Z]{1,5}\b/g)||[];
+  // Step 3: combine and filter stopwords + exchange names
+  const stopwords=new Set(['THE','AND','FOR','ARE','BUT','NOT','YOU','ALL','CAN','HER','WAS','ONE','OUR','OUT','DAY','GET','HAS','HIM','HOW','MAN','NEW','NOW','OLD','SEE','TWO','WAY','WHO','ITS','LET','PUT','SAY','SHE','TOO','USE','FROM','THAT','THIS','WITH','THEY','HAVE','WILL','YOUR','WHAT','BEEN','WERE','EACH','WHEN','MUCH','MORE','THAN','ALSO','INTO','OVER','SUCH','ONLY','BOTH','WELL','EVEN','BACK','GOOD','LAST','LONG','MADE','MANY','MOST','MUST','OPEN','SAME','SOME','THEN','THEM','WANT','WENT','YEAR','LIST','FUND','STOCK','PRICE','SHARE','INDEX','TYPE','DATA','NAME','RANK','COMP','CORP','INC','LTD','ETF','ADR','WEIGHT','MARKET','VALUE','CAP','CLASS','COMMON','NYSE','NASDAQ','CBOE','AMEX','BATS','ARCA']);
+  // Use exchange-prefixed tickers first (more reliable), then fill with bare ones
+  const exchangeSet=new Set(fromExchange);
+  const allTickers=[...fromExchange,...bare.filter(t=>!stopwords.has(t)&&!exchangeSet.has(t))];
+  return [...new Set(allTickers)];
+}
+
+function applyPastedTickers(){
+  const tickers=parsePastedTickers();
+  if(tickers.length<5){alert('Less than 5 tickers detected — check paste');return;}
+  const tickerStr=tickers.join(',');
+  const cacheKey='idx_cache_'+activeIdxName;
+  localStorage.setItem(cacheKey,JSON.stringify({ts:Date.now(),tickers:tickerStr}));
+  INDICES[activeIdxName]=tickerStr;
+  applyIndexList(tickerStr);
+  setRefreshStatus(`✓ ${tickers.length} tickers saved (${new Date().toLocaleDateString()})`,'lo');
+  document.getElementById('paste-modal').className='modal-overlay';
+  addLog('✓ '+activeIdxName.toUpperCase()+' updated: '+tickers.length+' tickers','lo');
+}
+
+async function exportToServer(){
+  if(!IS_SERVER){
+    // Running as local file — show instructions
+    const data={
+      trades: JSON.parse(localStorage.getItem('trade_log')||'[]'),
+      lists: JSON.parse(localStorage.getItem('ema_lists')||'{}'),
+      bars: JSON.parse(localStorage.getItem('ema_bars_cache')||'null'),
+      results: JSON.parse(localStorage.getItem('ema_results')||'null'),
+      settings:{
+        env: localStorage.getItem('tradier_env')||'live',
+        token: localStorage.getItem('tradier_token')||'',
+        account: localStorage.getItem('tradier_account')||'',
+      }
+    };
+    const json=JSON.stringify(data,null,2);
+    // Download as file
+    const blob=new Blob([json],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='ema-scanner-backup-'+new Date().toISOString().slice(0,10)+'.json';
+    a.click();
+    addLog('📦 נתונים יוצאו לקובץ — גרור לתיקיית ema-scanner/data/ ואז הפעל מחדש','lo');
+    return;
+  }
+  // Running via server — push all localStorage to server
+  const btn=document.getElementById('sync-btn');
+  if(btn){btn.disabled=true;btn.textContent='☁ שומר...';}
+  try{
+    const trades=JSON.parse(localStorage.getItem('trade_log')||'[]');
+    const lists=JSON.parse(localStorage.getItem('ema_lists')||'{}');
+    const bars=JSON.parse(localStorage.getItem('ema_bars_cache')||'null');
+    const results=JSON.parse(localStorage.getItem('ema_results')||'null');
+    const closedPerm = JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
+    await Promise.all([
+      apiPost('trades', trades),
+      apiPost('lists', lists),
+      apiPost('closed_trades', closedPerm),
+      bars?apiPost('cache/bars', bars):Promise.resolve(),
+      results?apiPost('cache/results', results):Promise.resolve(),
+    ]);
+    addLog('✅ כל הנתונים נשמרו לשרת ('+trades.length+' עסקאות, '+Object.keys(lists).length+' רשימות)','lo');
+  }catch(e){
+    addLog('✗ שגיאה בסנכרון: '+e.message,'le');
+  }
+  if(btn){btn.disabled=false;btn.textContent='☁ סנכרן לשרת';}
+}
+
+// Load backup JSON file into localStorage (for migration from HTML to server)
+function importFromFile(){
+  const input=document.createElement('input');
+  input.type='file';input.accept='.json';
+  input.onchange=async(ev)=>{
+    const file=ev.target.files[0];
+    if(!file)return;
+    try{
+      const text=await file.text();
+      const data=JSON.parse(text);
+      if(data.trades){localStorage.setItem('trade_log',JSON.stringify(data.trades));updateTradeLogBadge();}
+      if(data.lists){localStorage.setItem('ema_lists',JSON.stringify(data.lists));renderListBtns();}
+      if(data.bars){localStorage.setItem('ema_bars_cache',JSON.stringify(data.bars));}
+      if(data.results){localStorage.setItem('ema_results',JSON.stringify(data.results));}
+      if(data.settings){
+        if(data.settings.token)document.getElementById('api-token').value=data.settings.token;
+        if(data.settings.account)document.getElementById('account-id').value=data.settings.account;
+        if(data.settings.env)setEnv(data.settings.env);
+      }
+      addLog('✅ נתונים יובאו: '+( data.trades?.length||0)+' עסקאות, '+(Object.keys(data.lists||{}).length)+' רשימות','lo');
+      if(IS_SERVER)exportToServer(); // auto-push to server
+    }catch(e){alert('שגיאה בייבוא: '+e.message);}
+  };
+  input.click();
+}
+
+function openVersionModal(){
+  const list=document.getElementById('version-list');
+  if(list) list.innerHTML=VERSION_HISTORY.map((v,i)=>`
+    <div style="border:1px solid ${i===0?'var(--accent)':'var(--border)'};border-radius:var(--rs);padding:12px 14px;margin-bottom:8px;${i===0?'background:rgba(79,110,247,.06)':''}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+        <span style="font-family:SF Mono,monospace;font-weight:700;color:${i===0?'var(--accent)':'var(--text)'};">${v.v}</span>
+        <div style="display:flex;gap:8px;align-items:center;">
+          ${i===0?'<span style="background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.25);border-radius:4px;padding:1px 8px;font-size:10px;">נוכחית</span>':''}
+          <span style="font-size:11px;color:var(--muted);">${v.date}</span>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;">${v.notes}</div>
+    </div>
+  `).join('');
+  document.getElementById('version-modal').className='modal-overlay show';
+}
+// ── TASTYTRADE API ───────────────────────────────────────────────────────────
+let ttEnv='sandbox', ttSessionToken=null, ttAccountNumber=null, activeBroker='tradier';
+
+const TT_BASE=()=>ttEnv==='sandbox'?'https://api.cert.tastyworks.com':'https://api.tastytrade.com';
+
+function setBroker(b){
+  activeBroker=b;
+  localStorage.setItem('active_broker',b);
+  const btnT=document.getElementById('broker-tradier');
+  const btnTT=document.getElementById('broker-tastytrade');
+  const secT=document.getElementById('tradier-section');
+  const secTT=document.getElementById('tt-section');
+  if(btnT) btnT.className=b==='tradier'?'active':'';
+  if(btnTT) btnTT.className=b==='tastytrade'?'active':'';
+  if(secT) secT.style.display=b==='tradier'?'':'none';
+  if(secTT) secTT.style.display=b==='tastytrade'?'':'none';
+}
+
+function setTTEnv(e){
+  ttEnv=e;ttSessionToken=null;
+  document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
+  document.getElementById('btn-tt-live').className=e==='live'?'active':'';
+  localStorage.setItem('tt_env',e);
+}
+
+async function ttRequest(method, path, body=null){
+  const headers={'Content-Type':'application/json','X-TT-Env':ttEnv};
+  if(ttSessionToken) headers['Authorization']=ttSessionToken;
+  const opts={method,headers};
+  if(body) opts.body=JSON.stringify(body);
+  // Use proxy when running via server (Railway), direct otherwise
+  const url=IS_SERVER?('/tt-proxy'+path):(TT_BASE()+path);
+  const r=await fetch(url,opts);
+  if(!r.ok){
+    const err=await r.json().catch(()=>({}));
+    throw new Error('TT '+r.status+': '+(err?.error?.message||err?.errors?.[0]?.detail||r.statusText));
+  }
+  return r.json();
+}
+
+async function ttLogin(){
+  const clientSecret=document.getElementById('tt-client-secret')?.value.trim();
+  const refreshToken=document.getElementById('tt-refresh-token')?.value.trim();
+  const statusEl=document.getElementById('tt-status');
+  if(!clientSecret||!refreshToken){statusEl.textContent='הכנס Client Secret ו-Refresh Token';statusEl.style.color='var(--red)';return;}
+  try{
+    statusEl.textContent='מתחבר...';statusEl.style.color='var(--muted)';
+    // OAuth token exchange: refresh_token → access_token
+    const data=await ttRequest('POST','/oauth/token',{
+      'grant_type':'refresh_token',
+      'refresh_token':refreshToken,
+      'client_id':clientSecret
+    });
+    ttSessionToken=data['access_token']||data.data?.['session-token'];
+    if(!ttSessionToken) throw new Error('לא התקבל token');
+    localStorage.setItem('tt_session',ttSessionToken);
+    localStorage.setItem('tt_client_secret',clientSecret);
+    localStorage.setItem('tt_refresh_token',refreshToken);
+    addLog('✓ TastyTrade OAuth: התחברות הצליחה','lo');
+    await ttLoadAccounts();
+    statusEl.textContent='✓ מחובר';statusEl.style.color='var(--green)';
+  }catch(e){
+    // Fallback: try username/password session (older API)
+    try{
+      statusEl.textContent='מנסה session...';
+      const data2=await ttRequest('POST','/sessions',{
+        'login':clientSecret,'password':refreshToken,'remember-me':true
+      });
+      ttSessionToken=data2.data?.['session-token'];
+      if(!ttSessionToken) throw new Error('session נכשל');
+      localStorage.setItem('tt_session',ttSessionToken);
+      addLog('✓ TastyTrade Session: התחברות הצליחה','lo');
+      await ttLoadAccounts();
+      statusEl.textContent='✓ מחובר (session)';statusEl.style.color='var(--green)';
+    }catch(e2){
+      statusEl.textContent='✗ '+e.message;statusEl.style.color='var(--red)';
+      addLog('✗ TastyTrade: '+e.message,'le');
+    }
+  }
+}
+
+async function ttLoadAccounts(){
+  try{
+    const data=await ttRequest('GET','/customers/me/accounts');
+    const accounts=data.data?.items||[];
+    const select=document.getElementById('tt-account-select');
+    select.innerHTML=accounts.map(a=>{
+      const num=a.account['account-number'];
+      const type=a.account['account-type-name']||'';
+      const nick=a.account['nickname']||num;
+      return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
+    }).join('');
+    if(accounts.length>0){
+      ttAccountNumber=accounts[0].account['account-number'];
+      select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
+      document.getElementById('tt-accounts-row').style.display='';
+      // Auto-restore last selected account
+      const saved=localStorage.getItem('tt_account');
+      if(saved&&accounts.find(a=>a.account['account-number']===saved)){
+        select.value=saved;ttAccountNumber=saved;
+      }
+      addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
+    }
+  }catch(e){addLog('✗ TastyTrade accounts: '+e.message,'le');}
+}
+
+function ttSaveConfig(){
+  const statusEl=document.getElementById('tt-status');
+  statusEl.textContent='✓ נשמר — לחץ התחבר';statusEl.style.color='var(--green)';
+  addLog('✓ TastyTrade config נשמר','lo');
+}
+
+async function ttCheckConnection(){
+  const statusEl=document.getElementById('tt-status');
+  // Try restore from remember token
+  const saved=localStorage.getItem('tt_session');
+  if(saved){ttSessionToken=saved;}
+  if(!ttSessionToken){statusEl.textContent='לא מחובר — לחץ התחבר';statusEl.style.color='var(--red)';return;}
+  try{
+    const data=await ttRequest('GET','/customers/me');
+    const email=data.data?.email||'';
+    statusEl.textContent='✓ מחובר: '+email;statusEl.style.color='var(--green)';
+    await ttLoadAccounts();
+  }catch(e){
+    ttSessionToken=null;
+    statusEl.textContent='✗ Token פג — התחבר מחדש';statusEl.style.color='var(--red)';
+  }
+}
+
+// ── TastyTrade equivalents for Tradier functions ──────────────────────────────
+async function ttGetPositions(){
+  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
+  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/positions');
+  return data.data?.items||[];
+}
+
+async function ttGetOrders(){
+  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
+  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/orders/live');
+  return data.data?.items||[];
+}
+
+async function ttGetBalances(){
+  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
+  const data=await ttRequest('GET','/accounts/'+ttAccountNumber+'/balances');
+  return data.data;
+}
+
+async function ttGetQuotes(symbols){
+  // TastyTrade uses market-data endpoint
+  const syms=symbols.join(',');
+  const data=await ttRequest('GET','/market-data/equities/'+syms);
+  return data.data?.items||[];
+}
+
+async function ttGetHistory(symbol,days=320){
+  // TastyTrade: use market-data/history
+  const end=new Date(),start=new Date();
+  start.setDate(start.getDate()-days);
+  const fmt=d=>d.toISOString().slice(0,10);
+  const data=await ttRequest('GET',`/market-data/history/${symbol}?start-time=${fmt(start)}&end-time=${fmt(end)}&period-type=day`);
+  const candles=data.data?.candles||[];
+  return candles.map(c=>({
+    date:c.time?.slice(0,10)||'',
+    open:c.open,high:c.high,low:c.low,close:c.close,volume:c.volume
+  }));
+}
+
+async function ttPlaceOrder(side,symbol,qty,orderType,price=null){
+  if(!ttAccountNumber)throw new Error('לא נבחר חשבון');
+  const leg={
+    'instrument-type':'Equity',
+    'symbol':symbol,
+    'quantity':qty,
+    'action':side==='buy'?'Buy to Open':'Sell to Close'
+  };
+  const order={
+    'order-type':orderType==='market'?'Market':'Limit',
+    'time-in-force':orderType==='market'?'Day':'GTC',
+    'legs':[leg]
+  };
+  if(orderType==='limit'&&price) order['price']=price.toString();
+  if(orderType==='stop'&&price){
+    order['order-type']='Stop';
+    order['stop-trigger']=price.toString();
+  }
+  const data=await ttRequest('POST','/accounts/'+ttAccountNumber+'/orders',order);
+  return data.data;
+}
+
+async function ttCancelOrder(orderId){
+  return ttRequest('DELETE','/accounts/'+ttAccountNumber+'/orders/'+orderId);
+}
+
+// ── Broker-aware wrappers (used by scan + trade log) ─────────────────────────
+async function brokerGetHistory(symbol,days=320){
+  if(activeBroker==='tastytrade') return ttGetHistory(symbol,days);
+  return fetchHistory(symbol,days); // Tradier
+}
+
+function openLegend(){document.getElementById('legend-modal').className='modal-overlay show';}
+
+function openAddClosedModal(){
+  // Pre-fill today's date
+  const today=new Date().toISOString().slice(0,10);
+  document.getElementById('ac-exit-date').value=today;
+  // Clear fields
+  ['ac-ticker','ac-qty','ac-entry','ac-exit'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el)el.value='';
+  });
+  document.getElementById('ac-pnl-preview').style.display='none';
+  delete document.getElementById('add-closed-modal').dataset.editId;
+  // Add live PnL preview
+  ['ac-qty','ac-entry','ac-exit'].forEach(id=>{
+    document.getElementById(id).oninput=updateAcPreview;
+  });
+  document.getElementById('add-closed-modal').className='modal-overlay show';
+}
+
+function updateAcPreview(){
+  const qty=parseFloat(document.getElementById('ac-qty').value)||0;
+  const entry=parseFloat(document.getElementById('ac-entry').value)||0;
+  const exit=parseFloat(document.getElementById('ac-exit').value)||0;
+  const preview=document.getElementById('ac-pnl-preview');
+  if(qty&&entry&&exit){
+    const pnl=(exit-entry)*qty;
+    const pct=((exit-entry)/entry*100);
+    preview.style.display='block';
+    preview.innerHTML='P&L: <span style="font-weight:700;color:'+(pnl>=0?'var(--green)':'var(--red)')+';">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</span>'
+      +' <span style="color:var(--muted);">('+( pct>=0?'+':'')+pct.toFixed(2)+'%)</span>'
+      +' · Cost Basis: $'+(entry*qty).toFixed(2);
+  } else {
+    preview.style.display='none';
+  }
+}
+
+function editClosedTrade(orderId){
+  const log=getTradeLog();
+  const entry=log.find(e=>String(e.orderId)===String(orderId));
+  if(!entry)return;
+  // Pre-fill modal with existing data
+  document.getElementById('ac-ticker').value=entry.ticker||'';
+  document.getElementById('ac-qty').value=entry.qty||'';
+  document.getElementById('ac-entry').value=entry.fillPrice||entry.price||'';
+  document.getElementById('ac-exit').value=entry.closePrice||'';
+  document.getElementById('ac-entry-date').value=(entry.ts||'').slice(0,10);
+  document.getElementById('ac-exit-date').value=(entry.closeTs||'').slice(0,10);
+  document.getElementById('ac-reason').value=entry.closeReason||'stop triggered';
+  document.getElementById('ac-pnl-preview').style.display='none';
+  ['ac-qty','ac-entry','ac-exit'].forEach(id=>{
+    document.getElementById(id).oninput=updateAcPreview;
+  });
+  // Store editing id
+  document.getElementById('add-closed-modal').dataset.editId=orderId;
+  document.getElementById('add-closed-modal').className='modal-overlay show';
+  updateAcPreview();
+}
+
+function deleteClosedTrade(orderId){
+  if(!confirm('למחוק עסקה זו?'))return;
+  const log=getTradeLog();
+  const idx=log.findIndex(e=>String(e.orderId)===String(orderId));
+  if(idx>=0){log.splice(idx,1);saveTradeLog(log);updateTradeLogBadge();}
+  addLog('🗑 עסקה נמחקה','');
+  renderTradeLog();
+}
+
+function saveClosedTrade(){
+  const ticker=(document.getElementById('ac-ticker').value||'').trim().toUpperCase();
+  const qty=parseFloat(document.getElementById('ac-qty').value)||0;
+  const entry=parseFloat(document.getElementById('ac-entry').value)||0;
+  const exit=parseFloat(document.getElementById('ac-exit').value)||0;
+  const entryDate=document.getElementById('ac-entry-date').value||new Date().toISOString();
+  const exitDate=document.getElementById('ac-exit-date').value||new Date().toISOString();
+  const reason=document.getElementById('ac-reason').value;
+  if(!ticker||!qty||!entry||!exit){alert('מלא את כל השדות');return;}
+  const pnl=(exit-entry)*qty;
+  const modal=document.getElementById('add-closed-modal');
+  const editId=modal.dataset.editId||'';
+  if(editId){
+    // Edit existing
+    const log=getTradeLog();
+    const idx=log.findIndex(e=>String(e.orderId)===String(editId));
+    if(idx>=0){
+      log[idx].ticker=ticker;log[idx].qty=qty;
+      log[idx].price=entry;log[idx].fillPrice=entry;
+      log[idx].closePrice=exit;log[idx].pnl=pnl;
+      log[idx].ts=entryDate+'T00:00:00.000Z';
+      log[idx].closeTs=exitDate+'T00:00:00.000Z';
+      log[idx].closeReason=reason;
+      saveTradeLog(log);
+      addLog('✏ עסקה עודכנה: '+ticker+' P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
+    }
+    delete modal.dataset.editId;
+  } else {
+    // New entry
+    const uid='manual_'+ticker+'_'+Date.now();
+    addTradeEntry({
+      id:uid, orderId:uid, ticker, side:'buy', qty, type:'manual',
+      price:entry, fillPrice:entry, status:'closed',
+      ts:entryDate+'T00:00:00.000Z',
+      closePrice:exit, closeTs:exitDate+'T00:00:00.000Z',
+      closeReason:reason, pnl,
+      stopId:null, stopPrice:null, unrealizedPnl:null,
+      source:'manual_entry'
+    });
+    addLog('✓ עסקה ידנית נוספה: '+ticker+' P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
+  }
+  modal.className='modal-overlay';
+  renderTradeLog();
+}
+function tlToggle(section){
+  const body=document.getElementById('tl-'+section+'-body');
+  const arrow=document.getElementById('tl-'+section+'-arrow');
+  if(!body)return;
+  const hidden=body.style.display==='none';
+  body.style.display=hidden?'':'none';
+  if(arrow)arrow.textContent=hidden?'▼':'▶';
+}
+
+// ── TRADE LOG UI ──────────────────────────────────────────────────────────────
+function openTradeLog(){
+  renderTradeLog();
+  document.getElementById('trade-log-modal').className='modal-overlay show';
+}
+
+function renderTradeLog(){
+  const log=getTradeLog();
+  const sL={pending:'⏳ ממתין',open:'🟢 פתוח',closed:'✓ סגור',failed:'✗ נכשל',stop_failed:'⚠ סטופ נכשל',canceled:'✕ בוטל'};
+  const sC={pending:'var(--muted)',open:'var(--green)',closed:'var(--accent)',failed:'var(--red)',stop_failed:'var(--amber)',canceled:'var(--muted)'};
+
+  // ── Summary ───────────────────────────────────────────────────────────────
+  const allClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
+  // Recalculate missing pnl inline
+  allClosed.forEach(e=>{
+    if(e.pnl==null&&e.closePrice&&e.fillPrice&&e.qty)
+      e.pnl=(parseFloat(e.closePrice)-parseFloat(e.fillPrice))*parseFloat(e.qty||0);
+  });
+  const closed=allClosed; // all closed positions, with or without pnl
+  const closedWithPnl=allClosed.filter(e=>e.pnl!=null);
+  const totalPnl=closedWithPnl.reduce((a,e)=>a+(e.pnl||0),0);
+  const wins=closedWithPnl.filter(e=>e.pnl>0).length;
+  const lossCount=closedWithPnl.filter(e=>e.pnl<=0).length;
+  const openPositions=log.filter(e=>e.status==='open'&&e.side==='buy');
+  const unrealized=openPositions.reduce((a,e)=>{
+    let u=e.unrealizedPnl;
+    if(u==null&&e.currentPrice&&e.fillPrice)u=(parseFloat(e.currentPrice)-parseFloat(e.fillPrice))*parseFloat(e.qty);
+    return a+(u||0);
+  },0);
+  const grandTotal=totalPnl+unrealized;
+  const _unrCol=unrealized>=0?'var(--green)':'var(--red)';
+  const sumEl=document.getElementById('tl-summary');
+  if(sumEl) sumEl.innerHTML=`
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:10px 13px;">
+      <div style="font-size:11px;color:var(--muted);">סה"כ / פתוחות</div>
+      <div style="font-size:20px;font-weight:600;">${log.length} <span style="font-size:13px;color:var(--accent);">(${openPositions.length})</span></div>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:10px 13px;">
+      <div style="font-size:11px;color:var(--muted);">✓ מוצלחות / ✗ לא</div>
+      <div style="font-size:18px;font-weight:600;"><span style="color:var(--green)">${wins}</span> / <span style="color:var(--red)">${lossCount}</span>${closed.length>closedWithPnl.length?'<span style="font-size:10px;color:var(--muted);"> (+'+( closed.length-closedWithPnl.length)+' ממתין P&L)</span>':''}</div>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:10px 13px;">
+      <div style="font-size:11px;color:var(--muted);">אחוז הצלחה</div>
+      <div style="font-size:20px;font-weight:600;color:${closedWithPnl.length&&wins/closedWithPnl.length>=0.5?'var(--green)':'var(--red)'};">${closedWithPnl.length?Math.round(wins/closedWithPnl.length*100)+'%':'—'}</div>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:10px 13px;">
+      <div style="font-size:11px;color:var(--muted);">P&L לא ממומש</div>
+      <div style="font-size:20px;font-weight:600;color:${_unrCol};">${unrealized>=0?'+':''}$${unrealized.toFixed(2)}</div>
+    </div>
+    <div style="background:var(--bg3);border-radius:var(--rs);padding:10px 13px;">
+      <div style="font-size:11px;color:var(--muted);">כולל (ממומש+לא)</div>
+      <div style="font-size:20px;font-weight:600;color:${grandTotal>=0?'var(--green)':'var(--red)'};">${grandTotal>=0?'+':''}$${grandTotal.toFixed(2)}</div>
+    </div>`;
+
+  // ── Orders table ──────────────────────────────────────────────────────────
+  // Orders: show active stops (not filled/canceled/closed) + recent filled for reference
+  const orders_log=log.filter(e=>
+    e.side==='sell'&&
+    e.status!=='canceled'&&
+    e.status!=='filled'&&
+    e.status!=='closed'
+  );
+  // ── Closed Positions ──────────────────────────────────────────────────────
+  const closed_log=log.filter(e=>e.side==='buy'&&e.status==='closed');
+  const cntC=document.getElementById('tl-closed-count');
+  if(cntC) cntC.textContent=closed_log.length+' עסקאות';
+  const closedRows=document.getElementById('tl-closed-rows');
+  if(closedRows){
+    if(!closed_log.length){
+      closedRows.innerHTML='<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין עסקאות סגורות</td></tr>';
+    } else {
+      closedRows.innerHTML=closed_log.map(e=>{
+        const ep=parseFloat(e.fillPrice||e.price||0);
+        const cp=parseFloat(e.closePrice||0);
+        const qty=parseFloat(e.qty||0);
+        const pnl=e.pnl!=null?e.pnl:(ep&&cp?(cp-ep)*qty:null);
+        const pnlCol=pnl!=null?(pnl>=0?'var(--green)':'var(--red)'):'var(--muted)';
+        const pct=pnl!=null&&ep&&qty?(pnl/(ep*qty)*100):null;
+        const reason={
+          'stop triggered':'🛡️ סטופ',
+          'manual sell':'📤 מכירה ידנית',
+          'position closed':'✓ נסגר',
+          'position not found — check manually':'⚠ לא אומת'
+        }[e.closeReason]||e.closeReason||'—';
+        const ts=e.closeTs?new Date(e.closeTs).toLocaleString('he-IL',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'}):'—';
+        return`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:9px 12px;font-family:SF Mono,monospace;font-weight:600;">${e.ticker}</td>
+          <td style="padding:9px 12px;">${qty}</td>
+          <td style="padding:9px 12px;">${ep?'$'+ep.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;">${cp?'$'+cp.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;font-weight:600;color:${pnlCol};">
+            ${pnl!=null?(pnl>=0?'+':'')+'$'+pnl.toFixed(2):'—'}
+            ${pct!=null?'<br><span style="font-size:10px;">'+(pct>=0?'+':'')+pct.toFixed(1)+'%</span>':''}
+          </td>
+          <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${reason}</td>
+          <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${ts}</td>
+          <td style="padding:9px 12px;">
+            <div style="display:flex;gap:4px;">
+              <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;padding:3px 7px;" 
+                onclick="editClosedTrade('${e.orderId}')">✏</button>
+              <button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2);font-size:11px;padding:3px 7px;" 
+                onclick="deleteClosedTrade('${e.orderId}')">✕</button>
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  const cntO=document.getElementById('tl-orders-count');
+  if(cntO) cntO.textContent=orders_log.length+' פקודות פעילות';
+  const ordRows=document.getElementById('tl-orders-rows');
+  if(ordRows){
+    if(!orders_log.length){
+      ordRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין פקודות</td></tr>';
+    } else {
+      ordRows.innerHTML=orders_log.map(e=>{
+        const linkedBuy=log.find(b=>b.side==='buy'&&(String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId)));
+        const canAct=linkedBuy&&e.status!=='canceled'&&e.status!=='closed';
+        const actionBtns=canAct?`<div style="display:flex;gap:4px;">
+          <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;" onclick="updateStop('${e.ticker}',${linkedBuy.qty},'${linkedBuy.orderId}','${e.orderId}')">✏ עדכן</button>
+          <button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--muted);border:1px solid var(--border2);font-size:11px;" onclick="cancelStop('${e.ticker}','${linkedBuy.orderId}','${e.orderId}')">✕ בטל</button>
+        </div>`:'';
+        const priceStr=e.price?'@ $'+parseFloat(e.price).toFixed(2):'';
+        return`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:9px 12px;font-family:SF Mono,monospace;font-weight:600;">${e.ticker}</td>
+          <td style="padding:9px 12px;color:var(--red);">Sell</td>
+          <td style="padding:9px 12px;">${e.qty}</td>
+          <td style="padding:9px 12px;color:var(--muted);font-size:12px;">Stop ${priceStr}</td>
+          <td style="padding:9px 12px;color:var(--muted);font-size:12px;">GTC</td>
+          <td style="padding:9px 12px;color:var(--red);">${e.price?'$'+parseFloat(e.price).toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;"><span style="background:rgba(79,110,247,.12);color:#7b9fff;border:1px solid rgba(79,110,247,.25);border-radius:4px;padding:2px 8px;font-size:11px;">${sL[e.status]||e.status}</span></td>
+          <td style="padding:9px 12px;font-size:12px;">${(()=>{
+            if(!linkedBuy||!e.price)return '—';
+            const ep=parseFloat(linkedBuy.fillPrice||linkedBuy.price||0);
+            const sp=parseFloat(e.price||0);
+            const qty=parseFloat(linkedBuy.qty||0);
+            if(!ep||!sp||!qty)return '—';
+            const pnl=(sp-ep)*qty;
+            const col=pnl>=0?'var(--green)':'var(--red)';
+            return '<span style="color:'+col+';font-weight:600;">'+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+'</span>';
+          })()}</td>
+          <td style="padding:9px 12px;">${actionBtns}</td>
+        </tr>`;
+      }).join('');
+    }
+  }
+
+  // ── Positions table ───────────────────────────────────────────────────────
+  const positions_log=log.filter(e=>e.side==='buy');
+  const cntP=document.getElementById('tl-positions-count');
+  if(cntP) cntP.textContent=positions_log.length+' פוזיציות';
+  const posRows=document.getElementById('tl-positions-rows');
+  if(posRows){
+    if(!positions_log.length){
+      posRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין פוזיציות</td></tr>';
+    } else {
+      posRows.innerHTML=positions_log.filter(e=>e.status==='open'||e.status==='pending').map(e=>{
+        const fillPrice=parseFloat(e.fillPrice||e.price||0);
+        const currPrice=parseFloat(e.currentPrice||0);
+        const qty=parseFloat(e.qty||0);
+        let unreal=e.unrealizedPnl;
+        if(unreal==null&&currPrice&&fillPrice) unreal=(currPrice-fillPrice)*qty;
+        const costBasis=fillPrice*qty;
+        const gainLoss=e.status==='closed'?e.pnl:unreal;
+        const gainPct=gainLoss!=null&&costBasis>0?(gainLoss/costBasis)*100:null;
+        const glCol=gainLoss!=null?(gainLoss>=0?'var(--green)':'var(--red)'):'var(--muted)';
+        // Match stop order to position — guard against null/undefined string matches
+        const matchStop=o=>{
+          const sameTicker=o.ticker===e.ticker;
+          const byLinked=o.linkedBuyOrderId&&o.linkedBuyOrderId!=='null'&&
+            String(o.linkedBuyOrderId)===String(e.orderId);
+          const byStopId=e.stopId&&e.stopId!==null&&e.stopId!=='null'&&
+            String(e.stopId)===String(o.orderId);
+          return sameTicker&&(byLinked||byStopId)&&
+            o.status!=='canceled'&&o.status!=='closed';
+        };
+        const hasStop=orders_log.some(matchStop);
+        const linkedStop=orders_log.find(matchStop);
+        const linkedStopId=linkedStop?.orderId||'';  // empty string = no stop
+
+        const stopBtn=e.status==='open'&&!hasStop
+          ?`<button class="btn-sm" style="background:rgba(239,68,68,.12);color:var(--red);border:1px solid rgba(239,68,68,.25);font-size:11px;" onclick="sendManualStop('${e.ticker}',${e.qty},'${e.orderId}')">+ סטופ</button>`
+          :'';
+
+        const sellBtn=e.status==='open'
+          ?`<div style="display:flex;gap:3px;margin-top:2px;">
+              <button class="btn-sm" style="background:rgba(239,68,68,.18);color:#fca5a5;border:1px solid rgba(239,68,68,.35);font-size:11px;font-weight:600;padding:3px 8px;" 
+                onclick="sellPosition('${e.ticker}',${e.qty},'${e.orderId}','${linkedStopId}','market')">
+                Market
+              </button>
+              <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.3);font-size:11px;font-weight:600;padding:3px 8px;" 
+                onclick="sellPosition('${e.ticker}',${e.qty},'${e.orderId}','${linkedStopId}','limit')">
+                Limit
+              </button>
+            </div>`
+          :'';
+
+        return`<tr style="border-bottom:1px solid var(--border);">
+          <td style="padding:9px 12px;font-family:SF Mono,monospace;font-weight:600;">${e.ticker}<br><span style="font-size:10px;color:${sC[e.status]||'var(--muted)'};">${sL[e.status]||e.status}</span></td>
+          <td style="padding:9px 12px;">${qty}</td>
+          <td style="padding:9px 12px;">${fillPrice?'$'+fillPrice.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;">${currPrice?'$'+currPrice.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;font-size:11px;color:${glCol};">${gainPct!=null?(gainLoss>=0?'+':'')+gainPct.toFixed(2)+'%':'—'}</td>
+          <td style="padding:9px 12px;">${costBasis?'$'+costBasis.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;font-weight:600;color:${glCol};">${gainLoss!=null?(gainLoss>=0?'+':'')+'$'+gainLoss.toFixed(2):'—'}</td>
+          <td style="padding:9px 12px;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              ${sellBtn}
+              ${stopBtn}
+            </div>
+          </td>
+        </tr>`;
+      }).join('');
+    }
+  }
+}
+
+async function sellPosition(ticker, qty, buyOrderId, stopOrderId, orderType){
+  if(!TOKEN()||!ACCT()){alert('חסר token או Account ID');return;}
+
+  // For limit orders — get price first
+  let limitPrice=null;
+  if(orderType==='limit'){
+    const log0=getTradeLog();
+    const entry0=log0.find(e=>String(e.orderId)===String(buyOrderId));
+    const currPrice=parseFloat(entry0?.currentPrice||0);
+    const suggested=currPrice?currPrice.toFixed(2):'';
+    const input=prompt(
+      `Limit מכירה: ${ticker} × ${qty}\n`+
+      `${currPrice?'מחיר נוכחי: $'+currPrice.toFixed(2):''}\n\n`+
+      `הכנס מחיר Limit:`, suggested
+    );
+    if(!input)return;
+    limitPrice=parseFloat(input);
+    if(isNaN(limitPrice)||limitPrice<=0){alert('מחיר לא תקין');return;}
+  }
+
+  // Confirm
+  const typeLabel=orderType==='limit'?`Limit @ $${limitPrice}`:'Market';
+  const stopWarn=stopOrderId&&stopOrderId!==''&&stopOrderId!=='null'&&stopOrderId!=='undefined'
+    ?'\n⚠️ פקודת סטופ פתוחה תבוטל אוטומטית':'';
+  if(!confirm(`מכירה ${typeLabel}\n${ticker} × ${qty}${stopWarn}\n\nלאשר?`))return;
+
+  // Step 1: Cancel stop if exists
+  if(stopOrderId&&stopOrderId!==''&&stopOrderId!=='null'&&stopOrderId!=='undefined'){
+    try{
+      await tCancelOrder(stopOrderId);
+      addLog('✕ '+ticker+' סטופ בוטל לפני מכירה (ID: '+stopOrderId+')','lo');
+      const log=getTradeLog();
+      const si=log.findIndex(e=>String(e.orderId)===String(stopOrderId));
+      if(si>=0)log[si].status='canceled';
+      const bi=log.findIndex(e=>String(e.orderId)===String(buyOrderId));
+      if(bi>=0){log[bi].stopId=null;log[bi].stopPrice=null;}
+      saveTradeLog(log);
+    }catch(e){
+      if(!confirm('לא ניתן לבטל סטופ: '+e.message+'\nלהמשיך בכל מקרה?'))return;
+    }
+    await new Promise(r=>setTimeout(r,500));
+  }
+
+  // Step 2: Send sell order
+  try{
+    // Route to correct broker
+    if(activeBroker==='tastytrade'){
+      const ttOrd=await ttPlaceOrder('sell',ticker,qty,orderType,limitPrice);
+      addLog('📤 TT '+ticker+' מכירה × '+qty+' — ID: '+ttOrd.id,'lo');
+      renderTradeLog();
+      return;
+    }
+    const body={class:'equity',symbol:ticker,side:'sell',quantity:qty,
+      type:orderType==='limit'?'limit':'market',
+      duration:orderType==='limit'?'gtc':'day'};
+    if(orderType==='limit') body.price=limitPrice;
+    const d=await tPost('/accounts/'+ACCT()+'/orders',body);
+    const orderId=d.order?.id;
+    addLog('📤 '+ticker+' מכירה '+typeLabel+' × '+qty+' — ID: '+orderId,'lo');
+
+    // Update log
+    const log=getTradeLog();
+    const bi=log.findIndex(e=>String(e.orderId)===String(buyOrderId));
+    if(bi>=0){
+      log[bi].status=orderType==='market'?'closed':'open'; // limit stays open until filled
+      if(orderType==='market'){log[bi].closeTs=new Date().toISOString();log[bi].closeReason='manual sell';}
+    }
+    addTradeEntry({
+      id:'sell_'+orderId, orderId:String(orderId),
+      ticker, side:'sell', qty,
+      type:orderType, price:limitPrice||null,
+      fillPrice:null, status:'pending',
+      ts:new Date().toISOString(),
+      linkedBuyOrderId:String(buyOrderId),
+      source:'manual_sell', pnl:null
+    });
+    saveTradeLog(log);
+    updateTradeLogBadge();
+    renderTradeLog();
+
+    // Poll for fill → P&L
+    (async()=>{
+      try{
+        const maxWait=orderType==='limit'?300000:90000; // limit: 5min, market: 90s
+        const filled=await pollOrderStatus(orderId,maxWait);
+        const fillPrice=parseFloat(filled.avg_fill_price||filled.last_fill_price||0);
+        const log2=getTradeLog();
+        const si=log2.findIndex(e=>String(e.orderId)===String(orderId));
+        if(si>=0){log2[si].status='filled';log2[si].fillPrice=fillPrice;}
+        const bi2=log2.findIndex(e=>String(e.orderId)===String(buyOrderId));
+        if(bi2>=0&&fillPrice){
+          const ep=parseFloat(log2[bi2].fillPrice||log2[bi2].price||0);
+          const pnl=(fillPrice-ep)*qty;
+          log2[bi2].pnl=pnl;log2[bi2].closePrice=fillPrice;log2[bi2].status='closed';
+          log2[bi2].closeTs=new Date().toISOString();
+          addLog((pnl>=0?'✓ רווח':'✗ הפסד')+' '+ticker+': '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2)+' @ $'+fillPrice,pnl>=0?'lo':'le');
+        }
+        saveTradeLog(log2);
+        updateTradeLogBadge();
+        renderTradeLog(); // auto refresh after fill
+      }catch(e){addLog('⚠ '+ticker+' poll: '+e.message,'le');}
+    })();
+
+  }catch(e){
+    addLog('✗ מכירה נכשלה: '+e.message,'le');
+    alert('מכירה נכשלה: '+e.message);
+  }
+}
+
+async function sendManualStop(ticker,qty,buyOrderId){
+  if(!TOKEN()||!ACCT()){alert('חסר token או Account ID');return;}
+
+  // Find fill price from log
+  const log=getTradeLog();
+  const entry=log.find(e=>e.orderId===buyOrderId);
+  const fillPrice=entry?.fillPrice||entry?.price||null;
+
+  // Try to get ATR from scan results
+  const scanResult=results.find(r=>r.ticker===ticker);
+  const atr=scanResult?.atr||null;
+  const mult=parseFloat((document.getElementById('atr-mult')||{value:'1.5'}).value)||1.5;
+
+  // Calculate auto stop
+  let suggestedStop=null;
+  if(fillPrice&&atr){
+    suggestedStop=(fillPrice-atr*mult).toFixed(2);
+  } else if(fillPrice){
+    suggestedStop=(fillPrice*0.97).toFixed(2); // fallback: 3% below entry
+  }
+
+  // Show confirmation with auto-calculated price
+  const msg=suggestedStop
+    ? `סטופ אוטומטי עבור ${ticker}:
+
+מחיר כניסה: $${fillPrice||'?'}
+ATR: ${atr?'$'+atr.toFixed(2):'לא זמין'}
+מכפיל: ×${mult}
+
+מחיר סטופ מוצע: $${suggestedStop}
+
+לאשר או לשנות:`
+    : `מחיר סטופ עבור ${ticker}:`;
+
+  const stopPriceStr=prompt(msg, suggestedStop||'');
+  if(!stopPriceStr)return;
+  const stopPrice=parseFloat(stopPriceStr);
+  if(isNaN(stopPrice)||stopPrice<=0){alert('מחיר לא תקין');return;}
+
+  try{
+    const body={class:'equity',symbol:ticker,side:'sell',quantity:qty,type:'stop',stop:stopPrice,duration:'gtc'};
+    const d=await tPost('/accounts/'+ACCT()+'/orders',body);
+    const stopId=d.order?.id;
+
+    // Update log
+    const idx=log.findIndex(e=>e.orderId===buyOrderId);
+    if(idx>=0){
+      log[idx].stopId=stopId;
+      log[idx].stopPrice=stopPrice;
+      log[idx].stopTs=new Date().toISOString();
+    }
+    // Add stop order as separate SELL row
+    const stopEntry={
+      id:'stop_'+stopId, orderId:String(stopId),
+      ticker, side:'sell', qty, type:'stop',
+      price:stopPrice, fillPrice:null,
+      status:'pending', ts:new Date().toISOString(),
+      stopId:null, stopPrice:null, pnl:null,
+      linkedBuyOrderId:String(buyOrderId), source:'stop'
+    };
+    log.unshift(stopEntry);
+    saveTradeLog(log);
+    updateTradeLogBadge();
+
+    const atrInfo=atr?` (ATR×${mult}=$${(atr*mult).toFixed(2)})`:'';
+    addLog('🛡️ '+ticker+' Stop @ $'+stopPrice+atrInfo+' — ID: '+stopId,'lo');
+    renderTradeLog();
+  }catch(e){
+    addLog('✗ Stop נכשל: '+e.message,'le');
+    alert('שגיאה: '+e.message);
+  }
+}
+
+// Update existing stop — cancel old, send new with ATR calculation
+async function updateStop(ticker,qty,buyOrderId,oldStopId){
+  if(!TOKEN()||!ACCT()){alert('חסר token');return;}
+  const log=getTradeLog();
+  // Use string comparison; fallback to ticker+side match for imported positions
+  let entry=log.find(e=>String(e.orderId)===String(buyOrderId));
+  if(!entry||entry.ticker!==ticker){
+    // Fallback: find open buy for this exact ticker
+    entry=log.find(e=>e.ticker===ticker&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+  }
+  const stopEntry=log.find(e=>String(e.orderId)===String(oldStopId));
+  const fillPrice=parseFloat(entry?.fillPrice||entry?.price||0)||null;
+  const mult=parseFloat((document.getElementById('atr-mult')||{value:'1.5'}).value)||1.5;
+  const currentStopPrice=stopEntry?.price||entry?.stopPrice||'?';
+
+  // Fetch live price from Tradier right now
+  let livePrice=null;
+  try{
+    const q=await tGet('/markets/quotes',{symbols:ticker,greeks:'false'});
+    const raw=q.quotes?.quote;
+    const qt=Array.isArray(raw)?raw[0]:raw;
+    livePrice=parseFloat(qt?.last||qt?.bid||0)||null;
+    // Save to log for future reference
+    const idx2=log.findIndex(e=>String(e.orderId)===String(buyOrderId));
+    if(idx2>=0&&livePrice){log[idx2].currentPrice=livePrice;saveTradeLog(log);}
+  }catch(_){}
+
+  // ATR — from scan results first, else calculate from history
+  const scanResult=results.find(r=>r.ticker===ticker);
+  let atr=scanResult?.atr||null;
+  if(!atr){
+    try{
+      const now=new Date();
+      const start=new Date(now);start.setDate(start.getDate()-30);
+      const fmt=d=>d.toISOString().slice(0,10);
+      const hist=await tGet('/markets/history',{symbol:ticker,interval:'daily',start:fmt(start),end:fmt(now)});
+      const bars=hist.history?.day||[];
+      const bArr=Array.isArray(bars)?bars:[bars];
+      if(bArr.length>=15){
+        const trArr=[];
+        for(let i=1;i<bArr.length;i++){
+          const h=parseFloat(bArr[i].high),l=parseFloat(bArr[i].low),pc=parseFloat(bArr[i-1].close);
+          if(!isNaN(h)&&!isNaN(l)&&!isNaN(pc))trArr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));
+        }
+        if(trArr.length>=14){atr=trArr.slice(-14).reduce((a,b)=>a+b,0)/14;}
+      }
+    }catch(_){}
+  }
+
+  // Trailing stop: live price → fill price → fallback
+  const basePrice=livePrice||fillPrice;
+  let suggested=null;
+  if(basePrice&&atr) suggested=(basePrice-atr*mult).toFixed(2);
+  else if(stopEntry?.price) suggested=parseFloat(stopEntry.price).toFixed(2);
+  else if(entry?.stopPrice) suggested=parseFloat(entry.stopPrice).toFixed(2);
+
+  const msg=`עדכון סטופ עבור ${ticker}
+מחיר נוכחי (live): ${livePrice?'$'+livePrice.toFixed(2):'לא זמין'}
+מחיר כניסה: ${fillPrice?'$'+fillPrice.toFixed(2):'?'}
+סטופ נוכחי: $${typeof currentStopPrice==='number'?parseFloat(currentStopPrice).toFixed(2):currentStopPrice}
+${atr?'ATR: $'+atr.toFixed(2)+' × '+mult+' → הצעה: $'+suggested:'ATR לא זמין — הצעה: $'+suggested}
+
+מחיר סטופ חדש:`;
+  const newPriceStr=prompt(msg, suggested||entry?.stopPrice||'');
+  if(!newPriceStr)return;
+  const newPrice=parseFloat(newPriceStr);
+  if(isNaN(newPrice)||newPrice<=0){alert('מחיר לא תקין');return;}
+  try{
+    // Modify existing stop order price via PUT (Tradier API)
+    const d=await tModifyOrder(oldStopId, newPrice, qty);
+    addLog('✏ '+ticker+' סטופ עודכן @ $'+newPrice+' — ID: '+oldStopId,'lo');
+    // Update log: buy entry + sell (stop) entry
+    const buyIdx=log.findIndex(e=>e.orderId===buyOrderId);
+    if(buyIdx>=0){log[buyIdx].stopPrice=newPrice;log[buyIdx].stopUpdatedTs=new Date().toISOString();}
+    const stopIdx=log.findIndex(e=>String(e.orderId)===String(oldStopId));
+    if(stopIdx>=0){log[stopIdx].price=newPrice;log[stopIdx].stopUpdatedTs=new Date().toISOString();}
+    saveTradeLog(log);
+    renderTradeLog();
+  }catch(e){addLog('✗ עדכון סטופ נכשל: '+e.message,'le');}
+}
+
+// Cancel stop order
+async function cancelStop(ticker,buyOrderId,stopId){
+  if(!confirm('לבטל את פקודת הסטופ עבור '+ticker+'?'))return;
+  if(!TOKEN()||!ACCT()){alert('חסר token');return;}
+  try{
+    // Cancel via PUT status=cancel (Tradier API)
+    await tCancelOrder(stopId);
+    const log=getTradeLog();
+    // Update buy entry
+    const buyIdx=log.findIndex(e=>e.orderId===buyOrderId);
+    if(buyIdx>=0){log[buyIdx].stopId=null;log[buyIdx].stopPrice=null;}
+    // Update sell (stop) entry status
+    const stopIdx=log.findIndex(e=>String(e.orderId)===String(stopId));
+    if(stopIdx>=0){log[stopIdx].status='canceled';}
+    saveTradeLog(log);
+    addLog('✕ '+ticker+' סטופ בוטל (ID: '+stopId+')','lo');
+    renderTradeLog();
+  }catch(e){addLog('✗ ביטול סטופ נכשל: '+e.message,'le');}
+}
+
+function clearTradeLog(){
+  if(!confirm('נקה עסקאות פתוחות בלבד?\n\nעסקאות סגורות נשמרות לצמיתות ולא יימחקו.'))return;
+  const log=getTradeLog();
+  // Keep closed, remove open/pending
+  const closed=log.filter(e=>e.status==='closed');
+  _tradesCache=closed;
+  localStorage.setItem('trade_log', JSON.stringify(closed));
+  apiPost('trades', closed);
+  updateTradeLogBadge();
+  renderTradeLog();
+  addLog('✓ עסקאות פתוחות נוקו — '+closed.length+' סגורות נשמרו','lo');
+}
+
+function adminClearClosed(){
+  const pin=prompt('קוד ADMIN למחיקת עסקאות סגורות:');
+  if(!pin)return;
+  // Simple hash check
+  let h=0;for(let i=0;i<pin.length;i++)h=((h<<5)-h)+pin.charCodeAt(i);
+  const ADMIN_HASH=-1008685969; // Change this to your own PIN hash
+  if(h!==ADMIN_HASH){alert('קוד שגוי');return;}
+  if(!confirm('מחיקת כל העסקאות הסגורות לצמיתות?\nלא ניתן לשחזר!'))return;
+  localStorage.removeItem(CLOSED_KEY);
+  _tradesCache=[];
+  localStorage.removeItem('trade_log');
+  apiPost('trades',[]);
+  apiPost('closed_trades',[]);
+  updateTradeLogBadge();
+  renderTradeLog();
+  addLog('⚠ כל העסקאות נמחקו על ידי ADMIN','le');
+}
+
+function exportTradeLog(){
+  const log=getTradeLog();if(!log.length)return;
+  const h=['זמן','טיקר','צד','כמות','מחיר כניסה','מחיר מילוי','סטופ','סטטוס','רווח/הפסד'];
+  const rows=log.map(e=>[
+    new Date(e.ts).toLocaleString('he-IL'),e.ticker,e.side,e.qty,
+    e.price?parseFloat(e.price).toFixed(2):'',
+    e.fillPrice?parseFloat(e.fillPrice).toFixed(2):'',
+    e.stopPrice?parseFloat(e.stopPrice).toFixed(2):'',
+    e.status,e.pnl!=null?e.pnl.toFixed(2):''
+  ]);
+  const csv=[h,...rows].map(r=>r.join(',')).join('\n');
+  const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='trades_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+try{
+  const tok=localStorage.getItem('tradier_token');
+  const acc=localStorage.getItem('tradier_account');
+  const env=localStorage.getItem('tradier_env');
+  if(tok)document.getElementById('api-token').value=tok;
+  if(acc)document.getElementById('account-id').value=acc;
+  if(env)setEnv(env);
+  const c=JSON.parse(localStorage.getItem('ema_results')||'null');
+  if(c&&Date.now()-c.ts<86400000){results=c.data;updateStats();renderTable();document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');addLog('תוצאות נטענו מטמון','lo');lastAppliedParams=getCurrentParams();}
+}catch(_){}
+// ── DAILY POSITION CHECK ─────────────────────────────────────────────────────
+// Checks all open positions every day at 16:10 ET (after market close)
+// Updates P&L, stop status, and order fills from Tradier
+
+let posCheckTimer=null;
+
+function getNextPositionCheck(){
+  const ny=getNY(), t=new Date(ny);
+  t.setHours(16,10,0,0);
+  if(ny>=t||!isWD(ny)){
+    t.setDate(t.getDate()+1);
+    while(!isWD(t))t.setDate(t.getDate()+1);
+    t.setHours(16,10,0,0);
+  }
+  return t;
+}
+
+function schedulePositionCheck(){
+  if(posCheckTimer)clearTimeout(posCheckTimer);
+  const ms=getNextPositionCheck()-getNY();
+  posCheckTimer=setTimeout(async()=>{
+    addLog('🔄 בדיקת פוזיציות יומית...','li');
+    await checkAllPositions();
+    schedulePositionCheck(); // reschedule for tomorrow
+  }, ms);
+  const h=Math.floor(ms/3600000), m=Math.floor((ms%3600000)/60000);
+  addLog(`בדיקת פוזיציות: עוד ${h>0?h+"ש' ":''}${m}ד'`,'');
+}
+
+async function checkAllPositions(){
+  // Route to correct broker
+  if(activeBroker==='tastytrade') return checkAllPositionsTT();
+
+  if(!TOKEN()||!ACCT()){addLog('⚠ בדיקת פוזיציות: חסר token','le');return;}
+  addLog('🔄 בודק פוזיציות מ-Tradier...','li');
+  const log=getTradeLog();
+  let updated=0;
+
+  try{
+    // 1. Fetch live positions
+    let positions=[];
+    try{
+      const posData=await tGet('/accounts/'+ACCT()+'/positions');
+      let raw=posData.positions?.position||[];
+      positions=Array.isArray(raw)?raw:(raw?[raw]:[]);
+    }catch(_){}
+
+    // 2. Fetch balance
+    try{
+      const balData=await tGet('/accounts/'+ACCT()+'/balances');
+      const equity=balData.balances?.total_equity;
+      const openPL=balData.balances?.open_pl;
+      if(equity!=null)addLog('✓ Equity: $'+parseFloat(equity).toFixed(2)+' | Open P&L: '+(parseFloat(openPL||0)>=0?'+':'')+'$'+parseFloat(openPL||0).toFixed(2),'lo');
+    }catch(_){}
+
+    // 3. Fetch ALL orders
+    let allOrders=[];
+    try{
+      const ordData=await tGet('/accounts/'+ACCT()+'/orders');
+      let raw=ordData.orders?.order||[];
+      allOrders=Array.isArray(raw)?raw:(raw?[raw]:[]);
+    }catch(_){}
+
+    // 4. Fetch gainloss
+    let gainLoss=[];
+    try{
+      const glData=await tGet('/accounts/'+ACCT()+'/gainloss');
+      let raw=glData.gainloss?.closed_position||[];
+      gainLoss=Array.isArray(raw)?raw:(raw?[raw]:[]);
+    }catch(_){}
+
+    // 5. Fetch today's trade history
+    let tradeHistory=[];
+    try{
+      const today=new Date().toISOString().slice(0,10);
+      const hist=await tGet('/accounts/'+ACCT()+'/history',{type:'trade',start:today,limit:100});
+      let raw=hist?.history?.event||[];
+      tradeHistory=Array.isArray(raw)?raw:(raw?[raw]:[]);
+    }catch(_){}
+
+    // 6. Live quotes
+    const openBuys=log.filter(e=>e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+    const syms=[...new Set(openBuys.map(e=>e.ticker))];
+    let quotes={};
+    if(syms.length){
+      try{
+        const q=await tGet('/markets/quotes',{symbols:syms.join(','),greeks:'false'});
+        let arr=Array.isArray(q.quotes?.quote)?q.quotes.quote:[q.quotes?.quote].filter(Boolean);
+        arr.forEach(q=>{if(q.symbol)quotes[q.symbol]=parseFloat(q.last||q.bid||0);});
+      }catch(_){}
+    }
+
+    await _processPositions(log,positions,allOrders,gainLoss,tradeHistory,quotes,updated,
+      // adapters for Tradier format
+      {
+        getPosSymbol: p=>p.symbol,
+        getPosQty: p=>parseFloat(p.quantity||0),
+        getPosCost: p=>parseFloat(p.cost_basis||0)/parseFloat(p.quantity||1),
+        getPosDate: p=>p.date_acquired,
+        getOrdId: o=>String(o.id),
+        getOrdSymbol: o=>o.symbol,
+        getOrdSide: o=>o.side,
+        getOrdType: o=>o.type,
+        getOrdStatus: o=>o.status,
+        getOrdPrice: o=>parseFloat(o.stop_price||o.price||0),
+        getOrdQty: o=>parseFloat(o.quantity||0),
+        getOrdFillPrice: o=>parseFloat(o.avg_fill_price||o.last_fill_price||0),
+        getOrdDate: o=>o.create_date,
+        isStopOrd: o=>(o.type==='stop'||o.type==='stop_limit'||o.type==='stop_market')&&o.side==='sell',
+        isFilledOrd: o=>o.status==='filled',
+        isCanceledOrd: o=>['canceled','rejected','expired'].includes(o.status),
+      }
+    );
+
+  }catch(err){
+    addLog('✗ checkAllPositions: '+err.message,'le');
+    console.error(err);
+  }
+}
+
+async function checkAllPositionsTT(){
+  if(!ttSessionToken||!ttAccountNumber){addLog('⚠ TastyTrade: לא מחובר','le');return;}
+  addLog('🔄 בודק פוזיציות מ-TastyTrade...','li');
+  const log=getTradeLog();
+  let updated=0;
+
+  try{
+    // 1. Positions
+    let positions=[];
+    try{ positions=await ttGetPositions(); }catch(_){}
+
+    // 2. Balance
+    try{
+      const bal=await ttGetBalances();
+      const equity=bal?.['net-liquidating-value'];
+      const openPL=bal?.['net-liquidating-value-effect'];
+      if(equity)addLog('✓ TT Equity: $'+parseFloat(equity).toFixed(2),'lo');
+    }catch(_){}
+
+    // 3. Live orders
+    let allOrders=[];
+    try{ allOrders=await ttGetOrders(); }catch(_){}
+
+    // 4. Quotes
+    const openBuys=log.filter(e=>e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+    const syms=[...new Set(openBuys.map(e=>e.ticker))];
+    let quotes={};
+    if(syms.length){
+      try{
+        const qtData=await ttGetQuotes(syms);
+        qtData.forEach(q=>{if(q.symbol)quotes[q.symbol]=parseFloat(q['last']||q['mark']||0);});
+      }catch(_){}
+    }
+
+    await _processPositions(log,positions,allOrders,[],[],quotes,updated,
+      {
+        getPosSymbol: p=>p['underlying-symbol']||p.symbol,
+        getPosQty: p=>parseFloat(p['quantity']||0),
+        getPosCost: p=>parseFloat(p['average-open-price']||p['cost-effect']||0),
+        getPosDate: p=>p['created-at'],
+        getOrdId: o=>String(o.id),
+        getOrdSymbol: o=>o.legs?.[0]?.symbol||o.symbol,
+        getOrdSide: o=>{const a=o.legs?.[0]?.action||''; return a.toLowerCase().includes('buy')?'buy':'sell';},
+        getOrdType: o=>(o['order-type']||'').toLowerCase(),
+        getOrdStatus: o=>(o.status||'').toLowerCase(),
+        getOrdPrice: o=>parseFloat(o['stop-trigger']||o.price||0),
+        getOrdQty: o=>parseFloat(o.legs?.[0]?.quantity||o.quantity||0),
+        getOrdFillPrice: o=>parseFloat(o['average-fill-price']||0),
+        getOrdDate: o=>o['updated-at']||o['created-at'],
+        isStopOrd: o=>{
+          const t=(o['order-type']||'').toLowerCase();
+          const a=(o.legs?.[0]?.action||'').toLowerCase();
+          return (t==='stop'||t==='stop limit')&&a.includes('sell');
+        },
+        isFilledOrd: o=>o.status==='Filled'||o.status==='filled',
+        isCanceledOrd: o=>['Cancelled','cancelled','Rejected','rejected','Expired','expired'].includes(o.status),
+      }
+    );
+
+  }catch(err){
+    addLog('✗ checkAllPositionsTT: '+err.message,'le');
+    console.error(err);
+  }
+}
+
+// Shared processing logic for both brokers
+async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,quotes,updated,ad){
+  // Dedup
+  const tickerSeen=new Map();
+  for(let i=0;i<log.length;i++){
+    if(log[i].side==='buy'&&(log[i].status==='open'||log[i].status==='pending')){
+      const key=log[i].ticker;
+      if(tickerSeen.has(key)){
+        const prevIdx=tickerSeen.get(key);
+        if(log[prevIdx].fillPrice&&!log[i].fillPrice) log[i].status='duplicate';
+        else{log[prevIdx].status='duplicate';tickerSeen.set(key,i);}
+      } else tickerSeen.set(key,i);
+    }
+  }
+  const cleanLog=log.filter(e=>e.status!=='duplicate');
+  cleanLog.forEach((e,i)=>log[i]=e);
+  log.length=cleanLog.length;
+
+  // Find close info helper
+  function findCloseInfo(ticker){
+    const filledSell=allOrders.find(o=>ad.getOrdSymbol(o)===ticker&&ad.getOrdSide(o)==='sell'&&ad.isFilledOrd(o));
+    if(filledSell){const cp=ad.getOrdFillPrice(filledSell);if(cp>0)return{closePrice:cp,source:'order',orderId:ad.getOrdId(filledSell)};}
+    const sellTrade=tradeHistory.find(ev=>ev.type==='trade'&&ev.trade?.symbol===ticker&&(ev.trade?.transaction_type==='sell'||ev.trade?.transaction_type==='sell_short'));
+    if(sellTrade){const cp=parseFloat(sellTrade.trade?.price||0);if(cp>0)return{closePrice:cp,source:'history'};}
+    const gl=gainLoss.find(g=>g.symbol===ticker);
+    if(gl){return{closePrice:parseFloat(gl.proceeds||0)/parseFloat(gl.quantity||1),source:'gainloss',pnlFromGainloss:parseFloat(gl.gain_loss||0)};}
+    return null;
+  }
+
+  // Import new positions
+  for(const pos of positions){
+    const sym=ad.getPosSymbol(pos);
+    if(!sym)continue;
+    const already=log.some(e=>e.ticker===sym&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+    if(!already){
+      const qty=ad.getPosQty(pos);
+      const avgCost=ad.getPosCost(pos);
+      const curr=quotes[sym]||0;
+      const uid='pos_'+sym+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+      log.unshift({id:uid,orderId:uid,ticker:sym,side:'buy',qty,type:'imported',
+        price:avgCost,fillPrice:avgCost,status:'open',
+        ts:ad.getPosDate(pos)||new Date().toISOString(),
+        stopId:null,stopPrice:null,pnl:null,
+        currentPrice:curr||null,unrealizedPnl:curr&&avgCost?(curr-avgCost)*qty:null,
+        source:'broker_import'});
+      updated++;
+      addLog('📥 יובאה: '+sym+' ×'+qty+' @ $'+avgCost.toFixed(2),'li');
+    }
+  }
+
+  // Import stop orders
+  for(const ord of allOrders){
+    const sym=ad.getOrdSymbol(ord);
+    if(!sym||!ad.isStopOrd(ord))continue;
+    const already=log.some(e=>String(e.orderId)===String(ad.getOrdId(ord)));
+    if(!already){
+      const buyEntry=log.find(e=>e.ticker===sym&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+      if(buyEntry){buyEntry.stopId=String(ad.getOrdId(ord));buyEntry.stopPrice=ad.getOrdPrice(ord);}
+      const stopStatus=ad.isFilledOrd(ord)?'filled':ad.isCanceledOrd(ord)?'canceled':'pending';
+      log.unshift({id:'stop_'+ad.getOrdId(ord),orderId:String(ad.getOrdId(ord)),
+        ticker:sym,side:'sell',qty:ad.getOrdQty(ord),type:'stop',
+        price:ad.getOrdPrice(ord),status:stopStatus,
+        ts:ad.getOrdDate(ord)||new Date().toISOString(),
+        linkedBuyOrderId:buyEntry?.orderId||'',source:'stop',pnl:null,fillPrice:null});
+      updated++;
+    }
+  }
+
+  // Update open positions
+  for(let i=0;i<log.length;i++){
+    const e=log[i];
+    if(e.status!=='open'&&e.status!=='pending')continue;
+    if(e.side!=='buy')continue;
+
+    const pos=positions.find(p=>ad.getPosSymbol(p)===e.ticker);
+
+    if(pos){
+      // Update quote
+      if(quotes[e.ticker]){
+        log[i].currentPrice=quotes[e.ticker];
+        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+        if(fp>0)log[i].unrealizedPnl=(quotes[e.ticker]-fp)*parseFloat(e.qty||0);
+        updated++;
+      }
+      // Check if stop filled
+      const filledStop=allOrders.find(o=>ad.getOrdSymbol(o)===e.ticker&&ad.getOrdSide(o)==='sell'&&ad.isStopOrd(o)&&ad.isFilledOrd(o));
+      if(filledStop){
+        const cp=ad.getOrdFillPrice(filledStop)||e.stopPrice||0;
+        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+        const pnl=fp>0?(cp-fp)*parseFloat(e.qty||0):0;
+        log[i].status='closed';log[i].pnl=pnl;log[i].closePrice=cp;
+        log[i].closeTs=new Date().toISOString();log[i].closeReason='stop triggered';
+        const si=log.findIndex(o=>o.side==='sell'&&o.ticker===e.ticker&&o.source==='stop'&&o.status!=='canceled');
+        if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
+        updated++;
+        addLog('🛡️ '+e.ticker+' סטופ @ $'+cp+' | P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
+      }
+    } else {
+      // Position closed
+      const closeInfo=findCloseInfo(e.ticker);
+      if(closeInfo){
+        const cp=closeInfo.closePrice;
+        const fp=parseFloat(log[i].fillPrice||log[i].price||0);
+        const pnl=closeInfo.pnlFromGainloss!=null?closeInfo.pnlFromGainloss:(fp>0?(cp-fp)*parseFloat(e.qty||0):null);
+        log[i].status='closed';log[i].pnl=pnl;log[i].closePrice=cp;
+        log[i].closeTs=new Date().toISOString();log[i].closeReason='stop triggered';
+        const si=log.findIndex(o=>o.side==='sell'&&o.ticker===e.ticker&&o.source==='stop'&&o.status!=='canceled'&&o.status!=='filled');
+        if(si>=0){log[si].status='filled';log[si].fillPrice=cp;}
+        updated++;
+        addLog((pnl!=null?(pnl>=0?'✓':'✗')+' '+e.ticker+': '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2):'⚠ '+e.ticker+' נסגר')+' ('+closeInfo.source+')','lo');
+      } else {
+        log[i].status='closed';log[i].closeTs=new Date().toISOString();
+        log[i].closeReason='position not found';updated++;
+        addLog('⚠ '+e.ticker+' לא נמצא — סומן סגור','le');
+      }
+      continue;
+    }
+  }
+
+  // Sync stop statuses
+  for(let i=0;i<log.length;i++){
+    const e=log[i];
+    if(e.side!=='sell'||e.source!=='stop')continue;
+    if(e.status==='filled'||e.status==='canceled')continue;
+    const tradierOrd=allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId));
+    if(tradierOrd){
+      if(ad.isFilledOrd(tradierOrd)){log[i].status='filled';log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);updated++;}
+      else if(ad.isCanceledOrd(tradierOrd)){log[i].status='canceled';updated++;}
+    }
+  }
+
+  saveTradeLog(log);
+  updateTradeLogBadge();
+  try{
+    const closedCache=log.filter(e=>e.status==='closed'&&e.side==='buy'&&e.pnl!=null);
+    localStorage.setItem('closed_positions_cache',JSON.stringify({ts:Date.now(),data:closedCache}));
+  }catch(_){}
+  addLog('✅ בדיקה הסתיימה — '+updated+' עדכונים','lo');
+  renderTradeLog();
+}
+
+setInterval(updateClock,1000);
+updateClock();
+updateTickerCount();
+renderListBtns();
+updateTradeLogBadge();
+// Param change listeners — attach to all param inputs
+['rs-filter','ema-tol','vol-mult','vol-lookback','entry-max-dist','entry-lookback'].forEach(id=>{
+  const el=document.getElementById(id);
+  if(el){
+    el.addEventListener('input',checkParamsDirty);
+    el.addEventListener('change',checkParamsDirty);
+    // Also on keyup for immediate feedback
+    el.addEventListener('keyup',checkParamsDirty);
+  }
+});
+// Initialize lastAppliedParams from current UI values
+lastAppliedParams=getCurrentParams();
+// Restore broker selection
+const savedBroker=localStorage.getItem('active_broker')||'tradier';
+setBroker(savedBroker);
+const savedTTEnv=localStorage.getItem('tt_env')||'sandbox';
+setTTEnv(savedTTEnv);
+// Auto-restore TastyTrade session
+if(savedBroker==='tastytrade'){
+  const savedTTSession=localStorage.getItem('tt_session');
+  if(savedTTSession){ttSessionToken=savedTTSession;ttCheckConnection();}
+}
+// Restore closed positions from cache (survives page refresh)
+try{
+  const closedCache=JSON.parse(localStorage.getItem('closed_positions_cache')||'null');
+  if(closedCache&&closedCache.data){
+    const log=getTradeLog();
+    closedCache.data.forEach(cached=>{
+      const idx=log.findIndex(e=>e.ticker===cached.ticker&&e.side==='buy'&&e.status==='open');
+      if(idx>=0&&cached.pnl!=null){
+        // Position was closed — update from cache
+        log[idx].status='closed';
+        log[idx].pnl=cached.pnl;
+        log[idx].closePrice=cached.closePrice;
+        log[idx].closeTs=cached.closeTs;
+        log[idx].closeReason=cached.closeReason||'stop triggered';
+      }
+    });
+    saveTradeLog(log);
+  }
+}catch(_){}
+// Restore rawBarsCache from localStorage if available (within 24h)
+try{
+  const saved=JSON.parse(localStorage.getItem('ema_bars_cache')||'null');
+  if(saved&&Date.now()-saved.ts<24*3600*1000&&saved.cache){
+    saved.cache.forEach(([t,bars])=>{rawBarsCache[t]=bars;});
+    addLog('✓ נטען Cache מ-session קודם ('+Object.keys(rawBarsCache).length+' טיקרים)','lo');
+  }
+}catch(_){}
+// Now that both results and bars cache are loaded, check if recalc is possible
+checkParamsDirty();
+schedulePositionCheck();
+scheduleAuto();
+scheduleEndOfDaySave();
+</script>
+</body>
+</html>
