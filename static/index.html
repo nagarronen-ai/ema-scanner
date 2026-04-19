@@ -706,8 +706,10 @@ UNH</textarea>
 
 // ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
 // When running via FastAPI server, sync to server instead of localStorage only
-const IS_SERVER = window.location.port !== '' && 
-  !window.location.href.startsWith('file://');
+// IS_SERVER: true when running via Python server (Railway or local)
+// Railway uses HTTPS on port 443 (empty port), so check pathname instead
+const IS_SERVER = !window.location.href.startsWith('file://') && 
+  (window.location.port !== '' || window.location.protocol === 'https:');
 
 async function apiGet(endpoint, fallback=null){
   if(!IS_SERVER) return fallback;
