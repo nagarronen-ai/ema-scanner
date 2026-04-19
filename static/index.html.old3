@@ -214,9 +214,8 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
         OAuth: <a href="https://developer.tastytrade.com/sandbox/" target="_blank" style="color:var(--accent);">צור אפליקציה</a> → Manage → Create Grant
       </div>
-      <div><label>Client ID</label><input type="text" id="tt-client-id" placeholder="client id (מה-OAuth app)"/></div>
       <div><label>Client Secret</label><input type="password" id="tt-client-secret" placeholder="client secret"/></div>
-      <div><label>Refresh Token</label><input type="password" id="tt-refresh-token" placeholder="refresh token (מ-Create Grant)"/></div>
+      <div><label>Refresh Token</label><input type="password" id="tt-refresh-token" placeholder="refresh token"/></div>
       <div id="tt-accounts-row" style="display:none;">
         <label>Account</label>
         <select id="tt-account-select" style="width:100%;padding:5px 8px;font-size:12px;"></select>
@@ -1995,26 +1994,21 @@ async function ttRequest(method, path, body=null){
 }
 
 async function ttLogin(){
-  const clientId=document.getElementById('tt-client-id')?.value.trim();
   const clientSecret=document.getElementById('tt-client-secret')?.value.trim();
   const refreshToken=document.getElementById('tt-refresh-token')?.value.trim();
   const statusEl=document.getElementById('tt-status');
-  if(!clientId||!clientSecret||!refreshToken){
-    statusEl.textContent='הכנס Client ID, Client Secret ו-Refresh Token';
-    statusEl.style.color='var(--red)';return;
-  }
+  if(!clientSecret||!refreshToken){statusEl.textContent='הכנס Client Secret ו-Refresh Token';statusEl.style.color='var(--red)';return;}
   try{
     statusEl.textContent='מתחבר...';statusEl.style.color='var(--muted)';
+    // OAuth token exchange: refresh_token → access_token
     const data=await ttRequest('POST','/oauth/token',{
       'grant_type':'refresh_token',
       'refresh_token':refreshToken,
-      'client_id':clientId,
-      'client_secret':clientSecret
+      'client_id':clientSecret
     });
-    ttSessionToken=data['access_token']||data.data?.['session-token']||data.data?.['access_token'];
+    ttSessionToken=data['access_token']||data.data?.['session-token'];
     if(!ttSessionToken) throw new Error('לא התקבל token');
     localStorage.setItem('tt_session',ttSessionToken);
-    localStorage.setItem('tt_client_id',clientId);
     localStorage.setItem('tt_client_secret',clientSecret);
     localStorage.setItem('tt_refresh_token',refreshToken);
     addLog('✓ TastyTrade OAuth: התחברות הצליחה','lo');

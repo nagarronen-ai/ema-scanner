@@ -29,7 +29,7 @@ TT_SANDBOX = "https://api.cert.tastyworks.com"
 @app.api_route("/tt-proxy/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH"])
 async def tt_proxy(path: str, request: Request):
     """Proxy all TastyTrade API calls to bypass CORS"""
-    env = request.headers.get("X-TT-Env", "sandbox")
+    env = request.query_params.get("_env") or request.headers.get("X-TT-Env", "sandbox")
     base = TT_LIVE if env == "live" else TT_SANDBOX
     
     # Forward headers (auth token etc)
@@ -45,7 +45,7 @@ async def tt_proxy(path: str, request: Request):
                 url=f"{base}/{path}",
                 headers=headers,
                 content=body,
-                params=dict(request.query_params)
+                params={k:v for k,v in request.query_params.items() if k!='_env'}
             )
             return JSONResponse(
                 content=resp.json() if resp.content else {},

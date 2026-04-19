@@ -2011,7 +2011,7 @@ async function ttLogin(){
       'client_id':clientId,
       'client_secret':clientSecret
     });
-    ttSessionToken=data['access_token']||data.data?.['session-token']||data.data?.['access_token'];
+    ttSessionToken=data['access_token']||data.data?.['session-token'];
     if(!ttSessionToken) throw new Error('לא התקבל token');
     localStorage.setItem('tt_session',ttSessionToken);
     localStorage.setItem('tt_client_id',clientId);
