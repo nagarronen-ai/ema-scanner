@@ -111,7 +111,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <div class="dot" id="dot"></div>
     EMA Crossover Scanner
     <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
-    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.2 · 09.04.2026</span>
+    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.1 · 09.04.2026</span>
     <span class="badge badge-amber" id="market-badge">...</span>
   </h1>
   <div style="display:flex;gap:8px;align-items:center;">
@@ -366,13 +366,7 @@ UNH</textarea>
       <div class="modal-title" style="margin-bottom:2px;">📋 יומן עסקאות</div>
       <div style="font-size:12px;color:var(--muted);">היסטוריית קניות, מכירות, רווח והפסד</div>
     </div>
-    <!-- Journal indicator -->
-  <div style="font-size:11px;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px;">
-    <span>יומן:</span>
-    <span id="journal-indicator" style="background:rgba(79,110,247,.15);color:var(--accent);border:1px solid rgba(79,110,247,.3);border-radius:4px;padding:2px 8px;font-size:11px;font-family:SF Mono,monospace;"></span>
-    <span style="color:var(--border2);font-size:10px;">רק עסקאות של ברוקר+סביבה זו מוצגות</span>
-  </div>
-  <div style="display:flex;gap:8px;">
+    <div style="display:flex;gap:8px;">
       <button class="btn-secondary btn-sm" onclick="(async()=>{await checkAllPositions();renderTradeLog();})()">🔄 בדוק עכשיו</button>
       <button class="btn-secondary btn-sm" onclick="clearTradeLog()" style="color:var(--red);">🗑 נקה הכל</button>
       <button class="btn-secondary btn-sm" onclick="exportTradeLog()">⬇ ייצוא CSV</button>
@@ -454,7 +448,6 @@ UNH</textarea>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">P&amp;L</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סיבה</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">תאריך</th>
-            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">🤖 לקח</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
           </tr>
         </thead>
@@ -713,10 +706,8 @@ UNH</textarea>
 
 // ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
 // When running via FastAPI server, sync to server instead of localStorage only
-// IS_SERVER: true when running via Python server (Railway or local)
-// Railway uses HTTPS on port 443 (empty port), so check pathname instead
-const IS_SERVER = !window.location.href.startsWith('file://') && 
-  (window.location.port !== '' || window.location.protocol === 'https:');
+const IS_SERVER = window.location.port !== '' && 
+  !window.location.href.startsWith('file://');
 
 async function apiGet(endpoint, fallback=null){
   if(!IS_SERVER) return fallback;
@@ -737,28 +728,9 @@ async function apiPost(endpoint, data){
 let _tradesCache = [];
 let _listsCache = {};
 
-// ── JOURNAL ARCHITECTURE ─────────────────────────────────────────────────────
-// 4 separate journals: tradier-live, tradier-sandbox, tt-live, tt-sandbox
-// Permanent closed trades never deleted (admin-only)
+// ── PERMANENT CLOSED TRADES STORAGE ─────────────────────────────────────────
+// Closed trades are stored separately and NEVER deleted (except by admin)
 const CLOSED_KEY='ema_closed_trades_permanent';
-
-function journalKey(broker, env){
-  const b=(broker||activeBroker||'tradier').toLowerCase();
-  const e=(env||ttEnv||'sandbox').toLowerCase();
-  // Tradier env comes from tradierEnv variable
-  if(b==='tradier') return 'trades_tradier_'+(tradierEnv||'sandbox');
-  return 'trades_'+b+'_'+e;
-}
-
-function currentJournalKey(){
-  return journalKey(activeBroker, activeBroker==='tradier'?tradierEnv:ttEnv);
-}
-
-function getJournalApiPath(broker, env){
-  const b=(broker||activeBroker).toLowerCase().replace('tastytrade','tt');
-  const e=(env||(activeBroker==='tradier'?tradierEnv:ttEnv)).toLowerCase();
-  return 'journal/'+b+'/'+e;
-}
 
 function getClosedTrades(){
   try{ return JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]'); }catch(_){ return []; }
@@ -778,43 +750,25 @@ function mergeClosedIntoLog(log){
 }
 
 function getTradeLog(){
-  const key=currentJournalKey();
-  // Check cache (only valid for current journal)
-  if(_tradesCache.length>0 && _tradesCacheKey===key) return _tradesCache;
+  if(_tradesCache.length > 0) return _tradesCache;
   try{
-    // Try new key first, fallback to legacy 'trade_log'
-    const raw=localStorage.getItem(key)||localStorage.getItem('trade_log')||'[]';
-    const log=JSON.parse(raw);
+    const log=JSON.parse(localStorage.getItem('trade_log')||'[]');
     return mergeClosedIntoLog(log);
   }catch(_){ return getClosedTrades(); }
 }
 
-let _tradesCacheKey='';
-
 function saveTradeLog(log){
-  const key=currentJournalKey();
-  // Tag each entry with broker+env if not already tagged
-  log.forEach(e=>{
-    if(!e.broker) e.broker=activeBroker||'tradier';
-    if(!e.env) e.env=activeBroker==='tradier'?tradierEnv:ttEnv;
-  });
   // Extract closed buy positions → save permanently
   const newClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
   if(newClosed.length>0){
     const existing=getClosedTrades();
     const existingIds=new Set(existing.map(e=>String(e.orderId)));
     const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
-    if(toAdd.length>0){
-      saveClosedTrades([...existing,...toAdd]);
-      // Generate AI lessons for newly closed trades
-      toAdd.forEach(e=>generateAILesson(e));
-    }
+    if(toAdd.length>0) saveClosedTrades([...existing,...toAdd]);
   }
   _tradesCache=log;
-  _tradesCacheKey=key;
-  localStorage.setItem(key, JSON.stringify(log));
-  // Sync to server
-  apiPost(getJournalApiPath(), log);
+  localStorage.setItem('trade_log', JSON.stringify(log));
+  apiPost('trades', log);
 }
 
 function getLists(){
@@ -892,10 +846,10 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.2';
-const APP_DATE='19.04.2026';
+const APP_VERSION='v3.1';
+const APP_DATE='16.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.2', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
+  {v:'v3.1', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
   {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
   {v:'v2.6', date:'07.04.2025', notes:'MyList כתיבה מחדש, Paste מלוח, עדכון שם, EXCHANGE:TICKER format'},
   {v:'v2.5', date:'07.04.2025', notes:'יומן עסקאות: Orders+Positions נפרדים, מכירה Market/Limit, סטופ אוטו'},
@@ -2205,51 +2159,6 @@ async function brokerGetHistory(symbol,days=320){
   return fetchHistory(symbol,days); // Tradier
 }
 
-// ── AI LESSON GENERATION ─────────────────────────────────────────────────────
-async function generateAILesson(trade){
-  try{
-    const pnl=trade.pnl!=null?(trade.pnl>=0?'+':'')+'$'+trade.pnl.toFixed(2):'unknown';
-    const pnlPct=trade.pnl!=null&&trade.fillPrice&&trade.qty?
-      ((trade.pnl/(trade.fillPrice*trade.qty))*100).toFixed(1)+'%':'?';
-    const duration=trade.closeTs&&trade.ts?
-      Math.round((new Date(trade.closeTs)-new Date(trade.ts))/(1000*3600*24))+' days':'?';
-    const prompt=`Analyze this stock trade and provide ONE concise lesson learned (2-3 sentences max):
-Ticker: ${trade.ticker}
-Broker: ${trade.broker} (${trade.env})
-Entry signal: ${trade.entrySignal||'unknown'}
-Entry price: $${trade.fillPrice||trade.price||'?'}
-Exit price: $${trade.closePrice||'?'}
-P&L: ${pnl} (${pnlPct})
-Duration: ${duration}
-Exit reason: ${trade.closeReason||'unknown'}
-
-Focus on: what the signal indicated, whether the exit was correct, and what to do differently next time. Be specific and actionable.`;
-
-    const resp=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        model:'claude-sonnet-4-20250514',
-        max_tokens:150,
-        messages:[{role:'user',content:prompt}]
-      })
-    });
-    const data=await resp.json();
-    const lesson=data.content?.[0]?.text||'';
-    if(lesson){
-      const log=getTradeLog();
-      const idx=log.findIndex(e=>String(e.orderId)===String(trade.orderId));
-      if(idx>=0){log[idx].aiLesson=lesson;saveTradeLog(log);}
-      // Also update in permanent closed trades
-      const closed=getClosedTrades();
-      const cidx=closed.findIndex(e=>String(e.orderId)===String(trade.orderId));
-      if(cidx>=0){closed[cidx].aiLesson=lesson;saveClosedTrades(closed);}
-      addLog('🤖 '+trade.ticker+': AI lesson generated','lo');
-      renderTradeLog();
-    }
-  }catch(e){addLog('⚠ AI lesson failed: '+e.message,'le');}
-}
-
 function openLegend(){document.getElementById('legend-modal').className='modal-overlay show';}
 
 function openAddClosedModal(){
@@ -2379,17 +2288,6 @@ function openTradeLog(){
 
 function renderTradeLog(){
   const log=getTradeLog();
-  // Update journal indicator
-  const ji=document.getElementById('journal-indicator');
-  if(ji){
-    const broker=activeBroker==='tastytrade'?'TastyTrade':'Tradier';
-    const env=activeBroker==='tradier'?tradierEnv:ttEnv;
-    ji.textContent=broker+' '+env.toUpperCase();
-    ji.style.background=env==='live'?'rgba(239,68,68,.12)':'rgba(79,110,247,.12)';
-    ji.style.color=env==='live'?'var(--red)':'var(--accent)';
-    ji.style.borderColor=env==='live'?'rgba(239,68,68,.3)':'rgba(79,110,247,.3)';
-  }
-
   const sL={pending:'⏳ ממתין',open:'🟢 פתוח',closed:'✓ סגור',failed:'✗ נכשל',stop_failed:'⚠ סטופ נכשל',canceled:'✕ בוטל'};
   const sC={pending:'var(--muted)',open:'var(--green)',closed:'var(--accent)',failed:'var(--red)',stop_failed:'var(--amber)',canceled:'var(--muted)'};
 
@@ -2451,7 +2349,7 @@ function renderTradeLog(){
   const closedRows=document.getElementById('tl-closed-rows');
   if(closedRows){
     if(!closed_log.length){
-      closedRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין עסקאות סגורות</td></tr>';
+      closedRows.innerHTML='<tr><td colspan="7" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין עסקאות סגורות</td></tr>';
     } else {
       closedRows.innerHTML=closed_log.map(e=>{
         const ep=parseFloat(e.fillPrice||e.price||0);
@@ -2478,9 +2376,6 @@ function renderTradeLog(){
           </td>
           <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${reason}</td>
           <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${ts}</td>
-          <td style="padding:9px 12px;" colspan="1">
-            ${e.aiLesson?`<div style="font-size:11px;color:var(--muted);font-style:italic;max-width:200px;line-height:1.4;" title="${e.aiLesson}">${e.aiLesson.slice(0,80)}${e.aiLesson.length>80?'…':''}</div>`:'<span style="font-size:10px;color:var(--border2);">—</span>'}
-          </td>
           <td style="padding:9px 12px;">
             <div style="display:flex;gap:4px;">
               <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;padding:3px 7px;" 
@@ -3286,19 +3181,6 @@ updateTradeLogBadge();
 });
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
-// Migrate legacy trade_log to tradier-live journal (one-time migration)
-try{
-  const legacy=localStorage.getItem('trade_log');
-  const migrated=localStorage.getItem('_journal_migrated');
-  if(legacy&&!migrated){
-    const trades=JSON.parse(legacy);
-    if(trades.length>0){
-      localStorage.setItem('trades_tradier_live', legacy);
-      localStorage.setItem('_journal_migrated','1');
-      addLog('✓ '+trades.length+' עסקאות הועברו ל-Tradier Live journal','lo');
-    }
-  }
-}catch(_){}
 // Restore broker selection
 const savedBroker=localStorage.getItem('active_broker')||'tradier';
 setBroker(savedBroker);

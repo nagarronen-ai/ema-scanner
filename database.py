@@ -1,16 +1,18 @@
 """
-SQLite database for EMA Scanner
-Stores: trades, settings, my lists, scan cache
+SQLite database for EMA Scanner v3.1
+Multi-broker journal: tradier-live, tradier-sandbox, tt-live, tt-sandbox
 """
 import sqlite3
 import json
 import os
 
-# Railway Volume mounts at /data, local fallback to data/ folder
 if os.path.exists('/data'):
     DB_PATH = '/data/scanner.db'
 else:
     DB_PATH = os.environ.get("DB_PATH", "data/scanner.db")
+
+VALID_BROKERS = {'tradier', 'tt'}
+VALID_ENVS    = {'live', 'sandbox'}
 
 class Database:
     def __init__(self):
@@ -26,8 +28,8 @@ class Database:
         with self._conn() as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS kv (
-                    key   TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
+                    key        TEXT PRIMARY KEY,
+                    value      TEXT NOT NULL,
                     updated_at TEXT DEFAULT (datetime('now'))
                 );
             """)
@@ -44,27 +46,59 @@ class Database:
                 (key, json.dumps(value, ensure_ascii=False))
             )
 
+    # ── Journal (per broker + env) ─────────────────────────────────────────────
+    def journal_key(self, broker: str, env: str) -> str:
+        b = broker.lower() if broker in VALID_BROKERS else 'tradier'
+        e = env.lower() if env in VALID_ENVS else 'sandbox'
+        return f"journal_{b}_{e}"
+
+    def get_journal(self, broker: str, env: str) -> list:
+        return self._get(self.journal_key(broker, env), [])
+
+    def save_journal(self, broker: str, env: str, trades: list):
+        """Merge — never lose closed trades"""
+        existing = self.get_journal(broker, env)
+        existing_ids = {str(t.get('orderId', '')) for t in existing}
+        # Add new entries not already stored
+        merged = existing[:]
+        for t in trades:
+            if str(t.get('orderId', '')) not in existing_ids:
+                merged.append(t)
+            else:
+                # Update existing entry
+                idx = next((i for i, e in enumerate(merged)
+                            if str(e.get('orderId')) == str(t.get('orderId'))), None)
+                if idx is not None:
+                    merged[idx] = t
+        self._set(self.journal_key(broker, env), merged)
+
+    # ── Permanent closed trades ────────────────────────────────────────────────
+    def get_closed_trades(self) -> list:
+        return self._get("closed_trades_permanent", [])
+
+    def save_closed_trades(self, trades: list):
+        existing = self._get("closed_trades_permanent", [])
+        if not trades and existing:
+            return  # Never clear with empty list
+        existing_ids = {str(e.get('orderId', '')) for e in existing}
+        new = [t for t in trades if str(t.get('orderId', '')) not in existing_ids]
+        self._set("closed_trades_permanent", existing + new)
+
+    # ── Settings ──────────────────────────────────────────────────────────────
     def get_settings(self):
         return self._get("settings", {})
 
     def save_settings(self, data: dict):
         self._set("settings", data)
 
-    def get_trades(self):
-        return self._get("trades", [])
-
-    def save_trades(self, trades: list):
-        self._set("trades", trades)
-
-    def clear_trades(self):
-        self._set("trades", [])
-
+    # ── My Lists ──────────────────────────────────────────────────────────────
     def get_lists(self):
         return self._get("lists", {})
 
     def save_lists(self, data: dict):
         self._set("lists", data)
 
+    # ── Scan Cache ────────────────────────────────────────────────────────────
     def get_bars_cache(self):
         return self._get("bars_cache", {"ts": 0, "cache": []})
 
@@ -76,17 +110,3 @@ class Database:
 
     def save_results_cache(self, data: dict):
         self._set("results_cache", data)
-
-    def get_closed_trades(self):
-        return self._get("closed_trades_permanent", [])
-
-    def save_closed_trades(self, trades: list):
-        # Merge with existing — never overwrite with empty
-        existing = self._get("closed_trades_permanent", [])
-        if not trades and existing:
-            return  # Never clear with empty list
-        # Merge by orderId
-        existing_ids = {str(e.get('orderId','')) for e in existing}
-        new = [t for t in trades if str(t.get('orderId','')) not in existing_ids]
-        merged = existing + new
-        self._set("closed_trades_permanent", merged)
