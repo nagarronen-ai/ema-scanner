@@ -1,5 +1,5 @@
 """
-EMA Crossover Scanner — FastAPI Backend v3.0
+EMA Crossover Scanner — FastAPI Backend v3.1
 Includes proxy for TastyTrade API (CORS bypass)
 """
 from fastapi import FastAPI, HTTPException, Request
@@ -135,7 +135,7 @@ async def save_closed_trades(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.0"}
+    return {"status": "ok", "version": "v3.1"}
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
