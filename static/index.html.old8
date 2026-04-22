@@ -425,7 +425,6 @@ UNH</textarea>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">שינוי</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Cost Basis</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Gain/Loss</th>
-            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">📅 Earnings</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
           </tr>
         </thead>
@@ -903,47 +902,18 @@ function getJournalApiPath(broker, env){
   return 'journal/'+b+'/'+e;
 }
 
-function getClosedTrades(filterByContext=true){
-  try{
-    const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-    if(!filterByContext) return all;
-    // Filter by current broker + env
-    const broker=activeBroker||'tradier';
-    const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-    return all.filter(e=>{
-      // Legacy entries without broker tag → assume tradier+live
-      const eBroker=e.broker||(e.env?'tradier':'tradier');
-      const eEnv=e.env||'live';
-      return eBroker===broker && eEnv===env;
-    });
-  }catch(_){ return []; }
+function getClosedTrades(){
+  try{ return JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]'); }catch(_){ return []; }
 }
 
 function saveClosedTrades(closed){
-  // Tag each entry with current broker+env before saving
-  const broker=activeBroker||'tradier';
-  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  closed.forEach(e=>{
-    if(!e.broker) e.broker=broker;
-    if(!e.env) e.env=env;
-  });
-  // Merge with ALL existing (not filtered) so other contexts aren't lost
-  const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-  const allIds=new Set(all.map(e=>String(e.orderId)));
-  const toAdd=closed.filter(e=>!allIds.has(String(e.orderId)));
-  // Update existing entries
-  closed.forEach(c=>{
-    const idx=all.findIndex(e=>String(e.orderId)===String(c.orderId));
-    if(idx>=0) all[idx]=c;
-  });
-  const merged=[...all,...toAdd];
-  localStorage.setItem(CLOSED_KEY, JSON.stringify(merged));
-  apiPost('closed_trades', merged);
+  localStorage.setItem(CLOSED_KEY, JSON.stringify(closed));
+  apiPost('closed_trades', closed); // Sync to server
 }
 
 function mergeClosedIntoLog(log){
-  // Merge permanent closed trades for CURRENT context only
-  const closed=getClosedTrades(true); // filtered by broker+env
+  // Merge permanent closed trades into log (avoid duplicates by orderId)
+  const closed=getClosedTrades();
   const logIds=new Set(log.map(e=>String(e.orderId)));
   const toAdd=closed.filter(e=>!logIds.has(String(e.orderId)));
   return [...log, ...toAdd];
@@ -2694,14 +2664,7 @@ function renderTradeLog(){
     e.status!=='closed'
   );
   // ── Closed Positions ──────────────────────────────────────────────────────
-  // Filter closed by current broker+env
-  const curBroker=activeBroker||'tradier';
-  const curEnv=curBroker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  const closed_log=log.filter(e=>
-    e.side==='buy'&&e.status==='closed'&&
-    (e.broker||'tradier')===curBroker&&
-    (e.env||'live')===curEnv
-  );
+  const closed_log=log.filter(e=>e.side==='buy'&&e.status==='closed');
   const cntC=document.getElementById('tl-closed-count');
   if(cntC) cntC.textContent=closed_log.length+' עסקאות';
   const closedRows=document.getElementById('tl-closed-rows');
@@ -2847,17 +2810,6 @@ function renderTradeLog(){
           <td style="padding:9px 12px;font-size:11px;color:${glCol};">${gainPct!=null?(gainLoss>=0?'+':'')+gainPct.toFixed(2)+'%':'—'}</td>
           <td style="padding:9px 12px;">${costBasis?'$'+costBasis.toFixed(2):'—'}</td>
           <td style="padding:9px 12px;font-weight:600;color:${glCol};">${gainLoss!=null?(gainLoss>=0?'+':'')+'$'+gainLoss.toFixed(2):'—'}</td>
-          <td style="padding:9px 12px;">
-            ${(()=>{
-              if(!e.earningsDate) return `<button class="btn-sm" style="background:transparent;color:var(--muted);border:1px solid var(--border2);font-size:10px;" onclick="updatePositionEarnings('${e.ticker}','${e.orderId}')">📅 טען</button>`;
-              const ed=new Date(e.earningsDate);
-              const now=new Date();
-              const days=Math.ceil((ed-now)/(1000*3600*24));
-              const col=days<=7?'var(--red)':days<=21?'var(--amber)':'var(--green)';
-              const warn=days<=7?'⚠️ ':'';
-              return `<div style="font-size:11px;color:${col};font-weight:${days<=7?'600':'400'};" title="לחץ לרענון" onclick="updatePositionEarnings('${e.ticker}','${e.orderId}')" style="cursor:pointer;">${warn}${e.earningsDate}<br><span style="font-size:10px;">${days>0?days+'d':'עבר'}</span></div>`;
-            })()}
-          </td>
           <td style="padding:9px 12px;">
             <div style="display:flex;flex-direction:column;gap:4px;">
               ${sellBtn}
@@ -3173,17 +3125,12 @@ function adminClearClosed(){
   let h=0;for(let i=0;i<pin.length;i++)h=((h<<5)-h)+pin.charCodeAt(i);
   const ADMIN_HASH=-1008685969; // Change this to your own PIN hash
   if(h!==ADMIN_HASH){alert('קוד שגוי');return;}
-  const broker=activeBroker||'tradier';
-  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  if(!confirm('מחיקת עסקאות סגורות של '+broker+' '+env+' בלבד?\nלא ניתן לשחזר!'))return;
-  // Remove only current context entries, keep others
-  const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-  const kept=all.filter(e=>(e.broker||'tradier')!==broker||(e.env||'live')!==env);
-  localStorage.setItem(CLOSED_KEY,JSON.stringify(kept));
+  if(!confirm('מחיקת כל העסקאות הסגורות לצמיתות?\nלא ניתן לשחזר!'))return;
+  localStorage.removeItem(CLOSED_KEY);
   _tradesCache=[];
-  localStorage.removeItem(currentJournalKey());
-  apiPost(getJournalApiPath(),[]);
-  apiPost('closed_trades',kept);
+  localStorage.removeItem('trade_log');
+  apiPost('trades',[]);
+  apiPost('closed_trades',[]);
   updateTradeLogBadge();
   renderTradeLog();
   addLog('⚠ כל העסקאות נמחקו על ידי ADMIN','le');

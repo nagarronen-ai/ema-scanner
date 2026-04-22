@@ -109,30 +109,6 @@ def get_results(): return db.get_results_cache()
 async def save_results(request: Request):
     db.save_results_cache(await request.json()); return {"ok": True}
 
-# ── Earnings Date Proxy (Yahoo Finance) ──────────────────────────────────────
-@app.get("/earnings-proxy/{symbol}")
-async def earnings_proxy(symbol: str):
-    """Fetch earnings date from Yahoo Finance"""
-    try:
-        url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol.upper()}"
-        params = {"modules": "calendarEvents"}
-        headers = {"User-Agent": "Mozilla/5.0"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            data = resp.json()
-        events = data.get("quoteSummary",{}).get("result",[{}])[0].get("calendarEvents",{})
-        earnings = events.get("earnings",{})
-        dates = earnings.get("earningsDate",[])
-        if dates:
-            # Convert Unix timestamp to date string
-            ts = dates[0].get("raw", 0)
-            from datetime import datetime
-            date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else None
-            return {"earningsDate": date_str, "symbol": symbol.upper()}
-        return {"earningsDate": None, "symbol": symbol.upper()}
-    except Exception as e:
-        return {"earningsDate": None, "error": str(e)}
-
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():

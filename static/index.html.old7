@@ -425,7 +425,6 @@ UNH</textarea>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">שינוי</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Cost Basis</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">Gain/Loss</th>
-            <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">📅 Earnings</th>
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">פעולה</th>
           </tr>
         </thead>
@@ -712,148 +711,6 @@ UNH</textarea>
 
 <script>
 
-// ── ENCRYPTION (AES-GCM via Web Crypto API) ──────────────────────────────────
-// Master password → PBKDF2 → AES-256-GCM key
-// Sensitive keys encrypted: tradier_token, tt_client_id, tt_client_secret, tt_refresh_token
-
-const SENSITIVE_KEYS=['tradier_token','tradier_account','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember'];
-const SALT_KEY='_enc_salt';
-const MASTER_CHECK_KEY='_enc_check';
-let _cryptoKey=null;
-
-async function deriveKey(password, salt){
-  const enc=new TextEncoder();
-  const keyMaterial=await crypto.subtle.importKey('raw',enc.encode(password),{name:'PBKDF2'},false,['deriveKey']);
-  return crypto.subtle.deriveKey(
-    {name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},
-    keyMaterial,{name:'AES-GCM',length:256},false,['encrypt','decrypt']
-  );
-}
-
-async function encryptValue(key,value){
-  const iv=crypto.getRandomValues(new Uint8Array(12));
-  const enc=new TextEncoder();
-  const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},key,enc.encode(value));
-  // Store as base64(iv) + ':' + base64(ciphertext)
-  const toB64=arr=>btoa(String.fromCharCode(...new Uint8Array(arr)));
-  return 'enc:'+toB64(iv)+':'+toB64(ct);
-}
-
-async function decryptValue(key,stored){
-  if(!stored||!stored.startsWith('enc:')) return stored; // not encrypted
-  const parts=stored.split(':');
-  const fromB64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
-  const iv=fromB64(parts[1]);
-  const ct=fromB64(parts[2]);
-  try{
-    const pt=await crypto.subtle.decrypt({name:'AES-GCM',iv},key,ct);
-    return new TextDecoder().decode(pt);
-  }catch(_){return null;}
-}
-
-function getSalt(){
-  let salt=localStorage.getItem(SALT_KEY);
-  if(!salt){
-    salt=btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
-    localStorage.setItem(SALT_KEY,salt);
-  }
-  return Uint8Array.from(atob(salt),c=>c.charCodeAt(0));
-}
-
-async function initEncryption(password){
-  const salt=getSalt();
-  _cryptoKey=await deriveKey(password,salt);
-  // Verify by checking stored check value
-  const check=localStorage.getItem(MASTER_CHECK_KEY);
-  if(check){
-    const dec=await decryptValue(_cryptoKey,check);
-    if(dec!=='ema_scanner_ok') return false; // wrong password
-  } else {
-    // First time — store check value
-    const enc=await encryptValue(_cryptoKey,'ema_scanner_ok');
-    localStorage.setItem(MASTER_CHECK_KEY,enc);
-  }
-  return true;
-}
-
-async function secureSet(rawKey,value){
-  if(!_cryptoKey||!SENSITIVE_KEYS.includes(rawKey)){
-    localStorage.setItem(rawKey,value); return;
-  }
-  const enc=await encryptValue(_cryptoKey,value);
-  localStorage.setItem(rawKey,enc);
-}
-
-async function secureGet(rawKey){
-  const stored=localStorage.getItem(rawKey);
-  if(!stored) return null;
-  if(!_cryptoKey||!stored.startsWith('enc:')) return stored;
-  return decryptValue(_cryptoKey,stored);
-}
-
-// Password modal state
-let _encInitialized=false;
-let _pendingAfterUnlock=null;
-
-function showPasswordModal(mode='unlock', callback=null){
-  _pendingAfterUnlock=callback;
-  let modal=document.getElementById('enc-modal');
-  if(!modal){
-    modal=document.createElement('div');
-    modal.id='enc-modal';
-    modal.className='modal-overlay show';
-    modal.style.zIndex='9999';
-    modal.innerHTML=`<div class="modal-box" style="width:min(380px,92vw);" dir="rtl">
-      <div class="modal-title" style="margin-bottom:8px;" id="enc-title">🔐 הגדרת סיסמת הצפנה</div>
-      <div style="font-size:12px;color:var(--muted);margin-bottom:14px;" id="enc-sub">כל הנתונים הרגישים יוצפנו עם סיסמה זו</div>
-      <input type="password" id="enc-password" placeholder="הכנס סיסמה" autofocus
-        style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;"
-        onkeydown="if(event.key==='Enter')submitPassword()"/>
-      <div style="display:flex;gap:8px;">
-        <button class="btn-primary" onclick="submitPassword()" style="flex:1;">אשר</button>
-        <button class="btn-secondary" onclick="document.getElementById('enc-modal').className='modal-overlay'" style="flex:1;">ביטול</button>
-      </div>
-      <div id="enc-error" style="font-size:11px;color:var(--red);margin-top:8px;min-height:14px;"></div>
-    </div>`;
-    document.body.appendChild(modal);
-  }
-  const hasCheck=!!localStorage.getItem(MASTER_CHECK_KEY);
-  document.getElementById('enc-title').textContent=hasCheck?'🔐 הזן סיסמה':'🔐 צור סיסמת הצפנה';
-  document.getElementById('enc-sub').textContent=hasCheck?'הכנס את הסיסמה לפתיחת הנתונים המוצפנים':'סיסמה זו תשמש להצפנת כל הנתונים הרגישים';
-  document.getElementById('enc-password').value='';
-  document.getElementById('enc-error').textContent='';
-  modal.className='modal-overlay show';
-  setTimeout(()=>document.getElementById('enc-password')?.focus(),100);
-}
-
-async function submitPassword(){
-  const pw=document.getElementById('enc-password').value;
-  if(!pw){document.getElementById('enc-error').textContent='הכנס סיסמה';return;}
-  const ok=await initEncryption(pw);
-  if(!ok){document.getElementById('enc-error').textContent='סיסמה שגויה — נסה שוב';return;}
-  _encInitialized=true;
-  document.getElementById('enc-modal').className='modal-overlay';
-  addLog('🔐 הצפנה פעילה','lo');
-  // Re-populate fields with decrypted values
-  await restoreDecryptedFields();
-  if(_pendingAfterUnlock){_pendingAfterUnlock();_pendingAfterUnlock=null;}
-}
-
-async function restoreDecryptedFields(){
-  // Tradier token
-  const token=await secureGet('tradier_token');
-  if(token){const el=document.getElementById('api-token');if(el)el.value=token;}
-  const acct=await secureGet('tradier_account');
-  if(acct){const el=document.getElementById('account-id');if(el)el.value=acct;}
-  // TastyTrade
-  const cid=await secureGet('tt_client_id');
-  if(cid){const el=document.getElementById('tt-client-id');if(el)el.value=cid;}
-  const cs=await secureGet('tt_client_secret');
-  if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
-  const rt=await secureGet('tt_refresh_token');
-  if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
-}
-
 // ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
 // When running via FastAPI server, sync to server instead of localStorage only
 // IS_SERVER: true when running via Python server (Railway or local)
@@ -903,47 +760,18 @@ function getJournalApiPath(broker, env){
   return 'journal/'+b+'/'+e;
 }
 
-function getClosedTrades(filterByContext=true){
-  try{
-    const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-    if(!filterByContext) return all;
-    // Filter by current broker + env
-    const broker=activeBroker||'tradier';
-    const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-    return all.filter(e=>{
-      // Legacy entries without broker tag → assume tradier+live
-      const eBroker=e.broker||(e.env?'tradier':'tradier');
-      const eEnv=e.env||'live';
-      return eBroker===broker && eEnv===env;
-    });
-  }catch(_){ return []; }
+function getClosedTrades(){
+  try{ return JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]'); }catch(_){ return []; }
 }
 
 function saveClosedTrades(closed){
-  // Tag each entry with current broker+env before saving
-  const broker=activeBroker||'tradier';
-  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  closed.forEach(e=>{
-    if(!e.broker) e.broker=broker;
-    if(!e.env) e.env=env;
-  });
-  // Merge with ALL existing (not filtered) so other contexts aren't lost
-  const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-  const allIds=new Set(all.map(e=>String(e.orderId)));
-  const toAdd=closed.filter(e=>!allIds.has(String(e.orderId)));
-  // Update existing entries
-  closed.forEach(c=>{
-    const idx=all.findIndex(e=>String(e.orderId)===String(c.orderId));
-    if(idx>=0) all[idx]=c;
-  });
-  const merged=[...all,...toAdd];
-  localStorage.setItem(CLOSED_KEY, JSON.stringify(merged));
-  apiPost('closed_trades', merged);
+  localStorage.setItem(CLOSED_KEY, JSON.stringify(closed));
+  apiPost('closed_trades', closed); // Sync to server
 }
 
 function mergeClosedIntoLog(log){
-  // Merge permanent closed trades for CURRENT context only
-  const closed=getClosedTrades(true); // filtered by broker+env
+  // Merge permanent closed trades into log (avoid duplicates by orderId)
+  const closed=getClosedTrades();
   const logIds=new Set(log.map(e=>String(e.orderId)));
   const toAdd=closed.filter(e=>!logIds.has(String(e.orderId)));
   return [...log, ...toAdd];
@@ -1026,14 +854,14 @@ async function loadFromServer(){
     // Load bars cache
     const bars = await apiGet('cache/bars', null);
     if(bars && bars.cache && bars.cache.length > 0){
-      localStorage.setItem(barsCacheKey(), JSON.stringify(bars));
+      localStorage.setItem('ema_bars_cache', JSON.stringify(bars));
       // Restore rawBarsCache in memory
       try{ bars.cache.forEach(([t,b])=>{rawBarsCache[t]=b;}); }catch(_){}
     }
     // Load results cache
     const results = await apiGet('cache/results', null);
     if(results && results.data && results.data.length > 0){
-      localStorage.setItem(resultsCacheKey(), JSON.stringify(results));
+      localStorage.setItem('ema_results', JSON.stringify(results));
       // Restore results in memory
       try{ window._results=results.data; }catch(_){}
     }
@@ -1079,15 +907,6 @@ const VERSION_HISTORY=[
 ];
 
 let results=[],rawBarsCache={},spyRet3mCache=null,currentFilter='all',sortCol='signal',sortDir=-1;
-
-function scanCacheKey(){
-  // Unique cache key per broker+env combo
-  const broker=activeBroker||'tradier';
-  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  return broker+'_'+env;
-}
-function resultsCacheKey(){ return 'ema_results_'+scanCacheKey(); }
-function barsCacheKey(){ return 'ema_bars_cache_'+scanCacheKey(); }
 let lastAppliedParams={};let paramsDirty=false;
 let scanning=false,stopFlag=false,selectedTickers=new Set();
 let tradierEnv='live',autoScanTimer=null;
@@ -1315,7 +1134,7 @@ function recalcFromCache(){
     // Save raw bars cache to localStorage for cross-session use
     try{
       const cacheEntries=Object.entries(rawBarsCache).map(([t,bars])=>([t,bars]));
-      localStorage.setItem(barsCacheKey(),JSON.stringify({ts:Date.now(),cache:cacheEntries}));
+      localStorage.setItem('ema_bars_cache',JSON.stringify({ts:Date.now(),cache:cacheEntries}));
     }catch(_){}
     try{
       const resData={ts:Date.now(),data:results};
@@ -1377,11 +1196,11 @@ async function startScan(){
   // Save bars cache to localStorage
   try{
     const cacheEntries=Object.entries(rawBarsCache);
-    localStorage.setItem(barsCacheKey(),JSON.stringify({ts:Date.now(),cache:cacheEntries}));
+    localStorage.setItem('ema_bars_cache',JSON.stringify({ts:Date.now(),cache:cacheEntries}));
   }catch(_){}
   lastAppliedParams=getCurrentParams();
   checkParamsDirty();
-  try{localStorage.setItem(resultsCacheKey(),JSON.stringify({ts:Date.now(),data:results}));}catch(_){}
+  try{localStorage.setItem('ema_results',JSON.stringify({ts:Date.now(),data:results}));}catch(_){}
 }
 function stopScan(){stopFlag=true;scanning=false;document.getElementById('scan-btn').disabled=false;document.getElementById('dot').className='dot';}
 
@@ -1422,13 +1241,7 @@ function scheduleAuto(){
   addLog('תזמון: '+Math.round(ms/60000)+'ד\'','');
 }
 
-function setEnv(e){
-  tradierEnv=e;
-  document.getElementById('btn-sandbox').className=e==='sandbox'?'active':'';
-  document.getElementById('btn-live').className=e==='live'?'active':'';
-  localStorage.setItem('tradier_env',e);
-  _switchScanContext();
-}
+function setEnv(e){tradierEnv=e;document.getElementById('btn-sandbox').className=e==='sandbox'?'active':'';document.getElementById('btn-live').className=e==='live'?'active':'';localStorage.setItem('tradier_env',e);}
 async function testConnection(){
   if(!TOKEN()){addLog("✗ הכנס token","le");return;}
   addLog("שולח בקשה ל-Tradier ["+tradierEnv+"]...","li");
@@ -1446,11 +1259,11 @@ async function testConnection(){
       addLog("→ שגיאת CORS — ודא שה-token נכון ו-sandbox/live מתאים","li");
   }
 }
-async function saveConfig(){
-  if(!_encInitialized){showPasswordModal('unlock',()=>saveConfig());return;}
-  await secureSet('tradier_token',TOKEN());
-  await secureSet('tradier_account',ACCT());
-  addLog('✓ נשמר (מוצפן)','lo');
+function saveConfig(){
+  localStorage.setItem('tradier_token',TOKEN());
+  localStorage.setItem('tradier_account',ACCT());
+  addLog('✓ נשמר','lo');
+  // Push to server
   exportToServer();
 }
 function getTickers(){return document.getElementById('tickers').value.split(/[\n,\s]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);}
@@ -2195,7 +2008,6 @@ const TT_BASE=()=>ttEnv==='sandbox'?'https://api.cert.tastyworks.com':'https://a
 function setBroker(b){
   activeBroker=b;
   localStorage.setItem('active_broker',b);
-  _switchScanContext();
   const btnT=document.getElementById('broker-tradier');
   const btnTT=document.getElementById('broker-tastytrade');
   const secT=document.getElementById('tradier-section');
@@ -2211,7 +2023,6 @@ function setTTEnv(e){
   document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-tt-live').className=e==='live'?'active':'';
   localStorage.setItem('tt_env',e);
-  _switchScanContext();
 }
 
 async function ttRequest(method, path, body=null){
@@ -2230,9 +2041,9 @@ async function ttRequest(method, path, body=null){
 }
 
 async function ttLogin(){
-  const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
-  const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
-  const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
+  const clientId=document.getElementById('tt-client-id')?.value.trim();
+  const clientSecret=document.getElementById('tt-client-secret')?.value.trim();
+  const refreshToken=document.getElementById('tt-refresh-token')?.value.trim();
   const statusEl=document.getElementById('tt-status');
   if(!clientId||!clientSecret||!refreshToken){
     statusEl.textContent='הכנס Client ID, Client Secret ו-Refresh Token';
@@ -2300,70 +2111,10 @@ async function ttLoadAccounts(){
   }catch(e){addLog('✗ TastyTrade accounts: '+e.message,'le');}
 }
 
-function _switchScanContext(){
-  // Save current results/bars before switching
-  if(results.length>0){
-    // Already saved on scan completion, just update timestamp
-  }
-  // Clear in-memory cache (will be reloaded from localStorage for new context)
-  results=[];
-  rawBarsCache={};
-  spyRet3mCache=null;
-  // Try load cached scan for new context
-  try{
-    const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
-    if(c&&Date.now()-c.ts<86400000&&c.data?.length){
-      results=c.data;
-      updateStats();renderTable();
-      document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');
-      addLog('✓ נטען מטמון עבור '+scanCacheKey()+' ('+results.length+' מניות)','lo');
-    } else {
-      updateStats();renderTable();
-      addLog('ℹ '+scanCacheKey()+' — אין מטמון, בצע סריקה','li');
-    }
-  }catch(_){}
-  // Try load bars cache
-  try{
-    const saved=JSON.parse(localStorage.getItem(barsCacheKey())||'null');
-    if(saved&&Date.now()-saved.ts<24*3600*1000&&saved.cache){
-      saved.cache.forEach(([t,bars])=>{rawBarsCache[t]=bars;});
-    }
-  }catch(_){}
-  checkParamsDirty();
-  lastAppliedParams=getCurrentParams();
-  // Refresh trade log for new journal
-  _tradesCache=[];
-  _tradesCacheKey='';
-  updateTradeLogBadge();
-  // If trade log modal is open, refresh it
-  const modal=document.getElementById('trade-log-modal');
-  if(modal&&modal.className.includes('show')) renderTradeLog();
-  addLog('📋 יומן: '+currentJournalKey(),'li');
-}
-
-async function ttSaveConfig(){
-  const clientId=(document.getElementById('tt-client-id')?.value||'').trim();
-  const clientSecret=(document.getElementById('tt-client-secret')?.value||'').trim();
-  const refreshToken=(document.getElementById('tt-refresh-token')?.value||'').trim();
-  if(!clientId||!clientSecret||!refreshToken){
-    const statusEl=document.getElementById('tt-status');
-    statusEl.textContent='⚠ מלא את כל השדות לפני שמירה';statusEl.style.color='var(--red)';
-    return;
-  }
-  if(!_encInitialized){
-    showPasswordModal('unlock', async()=>{
-      await secureSet('tt_client_id',clientId);
-      await secureSet('tt_client_secret',clientSecret);
-      await secureSet('tt_refresh_token',refreshToken);
-    });
-    return;
-  }
-  await secureSet('tt_client_id',clientId);
-  await secureSet('tt_client_secret',clientSecret);
-  await secureSet('tt_refresh_token',refreshToken);
+function ttSaveConfig(){
   const statusEl=document.getElementById('tt-status');
-  statusEl.textContent='✓ נשמר מוצפן — לחץ התחבר';statusEl.style.color='var(--green)';
-  addLog('✓ TastyTrade config נשמר (מוצפן)','lo');
+  statusEl.textContent='✓ נשמר — לחץ התחבר';statusEl.style.color='var(--green)';
+  addLog('✓ TastyTrade config נשמר','lo');
 }
 
 async function ttCheckConnection(){
@@ -2694,14 +2445,7 @@ function renderTradeLog(){
     e.status!=='closed'
   );
   // ── Closed Positions ──────────────────────────────────────────────────────
-  // Filter closed by current broker+env
-  const curBroker=activeBroker||'tradier';
-  const curEnv=curBroker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  const closed_log=log.filter(e=>
-    e.side==='buy'&&e.status==='closed'&&
-    (e.broker||'tradier')===curBroker&&
-    (e.env||'live')===curEnv
-  );
+  const closed_log=log.filter(e=>e.side==='buy'&&e.status==='closed');
   const cntC=document.getElementById('tl-closed-count');
   if(cntC) cntC.textContent=closed_log.length+' עסקאות';
   const closedRows=document.getElementById('tl-closed-rows');
@@ -2847,17 +2591,6 @@ function renderTradeLog(){
           <td style="padding:9px 12px;font-size:11px;color:${glCol};">${gainPct!=null?(gainLoss>=0?'+':'')+gainPct.toFixed(2)+'%':'—'}</td>
           <td style="padding:9px 12px;">${costBasis?'$'+costBasis.toFixed(2):'—'}</td>
           <td style="padding:9px 12px;font-weight:600;color:${glCol};">${gainLoss!=null?(gainLoss>=0?'+':'')+'$'+gainLoss.toFixed(2):'—'}</td>
-          <td style="padding:9px 12px;">
-            ${(()=>{
-              if(!e.earningsDate) return `<button class="btn-sm" style="background:transparent;color:var(--muted);border:1px solid var(--border2);font-size:10px;" onclick="updatePositionEarnings('${e.ticker}','${e.orderId}')">📅 טען</button>`;
-              const ed=new Date(e.earningsDate);
-              const now=new Date();
-              const days=Math.ceil((ed-now)/(1000*3600*24));
-              const col=days<=7?'var(--red)':days<=21?'var(--amber)':'var(--green)';
-              const warn=days<=7?'⚠️ ':'';
-              return `<div style="font-size:11px;color:${col};font-weight:${days<=7?'600':'400'};" title="לחץ לרענון" onclick="updatePositionEarnings('${e.ticker}','${e.orderId}')" style="cursor:pointer;">${warn}${e.earningsDate}<br><span style="font-size:10px;">${days>0?days+'d':'עבר'}</span></div>`;
-            })()}
-          </td>
           <td style="padding:9px 12px;">
             <div style="display:flex;flex-direction:column;gap:4px;">
               ${sellBtn}
@@ -3173,17 +2906,12 @@ function adminClearClosed(){
   let h=0;for(let i=0;i<pin.length;i++)h=((h<<5)-h)+pin.charCodeAt(i);
   const ADMIN_HASH=-1008685969; // Change this to your own PIN hash
   if(h!==ADMIN_HASH){alert('קוד שגוי');return;}
-  const broker=activeBroker||'tradier';
-  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
-  if(!confirm('מחיקת עסקאות סגורות של '+broker+' '+env+' בלבד?\nלא ניתן לשחזר!'))return;
-  // Remove only current context entries, keep others
-  const all=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-  const kept=all.filter(e=>(e.broker||'tradier')!==broker||(e.env||'live')!==env);
-  localStorage.setItem(CLOSED_KEY,JSON.stringify(kept));
+  if(!confirm('מחיקת כל העסקאות הסגורות לצמיתות?\nלא ניתן לשחזר!'))return;
+  localStorage.removeItem(CLOSED_KEY);
   _tradesCache=[];
-  localStorage.removeItem(currentJournalKey());
-  apiPost(getJournalApiPath(),[]);
-  apiPost('closed_trades',kept);
+  localStorage.removeItem('trade_log');
+  apiPost('trades',[]);
+  apiPost('closed_trades',[]);
   updateTradeLogBadge();
   renderTradeLog();
   addLog('⚠ כל העסקאות נמחקו על ידי ADMIN','le');
@@ -3212,7 +2940,7 @@ try{
   if(tok)document.getElementById('api-token').value=tok;
   if(acc)document.getElementById('account-id').value=acc;
   if(env)setEnv(env);
-  const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
+  const c=JSON.parse(localStorage.getItem('ema_results')||'null');
   if(c&&Date.now()-c.ts<86400000){results=c.data;updateStats();renderTable();document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');addLog('תוצאות נטענו מטמון','lo');lastAppliedParams=getCurrentParams();}
 }catch(_){}
 // ── DAILY POSITION CHECK ─────────────────────────────────────────────────────
@@ -3558,15 +3286,6 @@ updateTradeLogBadge();
 });
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
-// Show encryption password modal if data is encrypted
-if(localStorage.getItem(MASTER_CHECK_KEY)){
-  showPasswordModal('unlock');
-} else if(localStorage.getItem('tradier_token')||localStorage.getItem('tt_client_id')){
-  // Unencrypted data exists — prompt to set encryption password
-  setTimeout(()=>{
-    if(!_encInitialized) showPasswordModal('create');
-  },1500);
-}
 // Migrate legacy trade_log to tradier-live journal (one-time migration)
 try{
   const legacy=localStorage.getItem('trade_log');
@@ -3589,13 +3308,6 @@ setTTEnv(savedTTEnv);
 if(savedBroker==='tastytrade'){
   const savedTTSession=localStorage.getItem('tt_session');
   if(savedTTSession){ttSessionToken=savedTTSession;ttCheckConnection();}
-  // Restore saved TT credentials to input fields
-  const savedClientId=localStorage.getItem('tt_client_id');
-  const savedClientSecret=localStorage.getItem('tt_client_secret');
-  const savedRefresh=localStorage.getItem('tt_refresh_token');
-  if(savedClientId){const el=document.getElementById('tt-client-id');if(el)el.value=savedClientId;}
-  if(savedClientSecret){const el=document.getElementById('tt-client-secret');if(el)el.value=savedClientSecret;}
-  if(savedRefresh){const el=document.getElementById('tt-refresh-token');if(el)el.value=savedRefresh;}
 }
 // Restore closed positions from cache (survives page refresh)
 try{
@@ -3618,7 +3330,7 @@ try{
 }catch(_){}
 // Restore rawBarsCache from localStorage if available (within 24h)
 try{
-  const saved=JSON.parse(localStorage.getItem(barsCacheKey())||'null');
+  const saved=JSON.parse(localStorage.getItem('ema_bars_cache')||'null');
   if(saved&&Date.now()-saved.ts<24*3600*1000&&saved.cache){
     saved.cache.forEach(([t,bars])=>{rawBarsCache[t]=bars;});
     addLog('✓ נטען Cache מ-session קודם ('+Object.keys(rawBarsCache).length+' טיקרים)','lo');
