@@ -136,7 +136,7 @@ async def earnings_proxy(symbol: str):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.3",
+    return {"status": "ok", "version": "v3.2",
             "journals": ["tradier/live","tradier/sandbox","tt/live","tt/sandbox"]}
 
 # ── Static ────────────────────────────────────────────────────────────────────

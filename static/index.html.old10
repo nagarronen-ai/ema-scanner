@@ -111,7 +111,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <div class="dot" id="dot"></div>
     EMA Crossover Scanner
     <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
-    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.3 · 09.04.2026</span>
+    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.2 · 09.04.2026</span>
     <span class="badge badge-amber" id="market-badge">...</span>
   </h1>
   <div style="display:flex;gap:8px;align-items:center;">
@@ -1065,10 +1065,10 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.3';
-const APP_DATE='22.04.2026';
+const APP_VERSION='v3.2';
+const APP_DATE='19.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.3', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
+  {v:'v3.2', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
   {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
   {v:'v2.6', date:'07.04.2025', notes:'MyList כתיבה מחדש, Paste מלוח, עדכון שם, EXCHANGE:TICKER format'},
   {v:'v2.5', date:'07.04.2025', notes:'יומן עסקאות: Orders+Positions נפרדים, מכירה Market/Limit, סטופ אוטו'},
