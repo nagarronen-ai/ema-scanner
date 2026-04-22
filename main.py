@@ -112,26 +112,103 @@ async def save_results(request: Request):
 # ── Earnings Date Proxy (Yahoo Finance) ──────────────────────────────────────
 @app.get("/earnings-proxy/{symbol}")
 async def earnings_proxy(symbol: str):
-    """Fetch earnings date from Yahoo Finance"""
+    """Fetch next earnings date using yfinance"""
+    from datetime import datetime, timezone
+    import pandas as pd
+    sym = symbol.upper()
     try:
-        url = f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol.upper()}"
-        params = {"modules": "calendarEvents"}
-        headers = {"User-Agent": "Mozilla/5.0"}
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(url, params=params, headers=headers)
-            data = resp.json()
-        events = data.get("quoteSummary",{}).get("result",[{}])[0].get("calendarEvents",{})
-        earnings = events.get("earnings",{})
-        dates = earnings.get("earningsDate",[])
-        if dates:
-            # Convert Unix timestamp to date string
-            ts = dates[0].get("raw", 0)
-            from datetime import datetime
-            date_str = datetime.fromtimestamp(ts).strftime("%Y-%m-%d") if ts else None
-            return {"earningsDate": date_str, "symbol": symbol.upper()}
-        return {"earningsDate": None, "symbol": symbol.upper()}
+        import yfinance as yf
+        ticker = yf.Ticker(sym)
+
+        # Method 1: ticker.calendar (dict format in newer yfinance)
+        cal = ticker.calendar
+        if cal is not None:
+            # Dict format: {'Earnings Date': [Timestamp, ...], ...}
+            if isinstance(cal, dict):
+                dates = cal.get("Earnings Date", [])
+                if not isinstance(dates, list):
+                    dates = [dates]
+                now = datetime.now(timezone.utc)
+                for d in dates:
+                    try:
+                        ts = pd.Timestamp(d)
+                        if ts.tzinfo is None:
+                            ts = ts.tz_localize("UTC")
+                        if ts > pd.Timestamp(now):
+                            return {"earningsDate": str(ts)[:10], "symbol": sym}
+                    except Exception:
+                        pass
+                # If no future date, return the latest
+                if dates:
+                    return {"earningsDate": str(pd.Timestamp(dates[0]))[:10], "symbol": sym}
+
+            # DataFrame format (older yfinance)
+            elif hasattr(cal, 'loc'):
+                try:
+                    row = cal.loc["Earnings Date"] if "Earnings Date" in cal.index else None
+                    if row is not None:
+                        vals = row.values if hasattr(row, 'values') else [row]
+                        for v in vals:
+                            if pd.notna(v):
+                                return {"earningsDate": str(v)[:10], "symbol": sym}
+                except Exception:
+                    pass
+
+        # Method 2: ticker.info earningsDate (Unix timestamp)
+        try:
+            info = ticker.info
+            for key in ["earningsDate", "earningsTimestamp", "nextEarningsDate"]:
+                val = info.get(key)
+                if val:
+                    if isinstance(val, (int, float)) and val > 0:
+                        return {"earningsDate": datetime.fromtimestamp(int(val)).strftime("%Y-%m-%d"), "symbol": sym}
+                    if isinstance(val, str) and len(val) >= 10:
+                        return {"earningsDate": val[:10], "symbol": sym}
+        except Exception:
+            pass
+
     except Exception as e:
-        return {"earningsDate": None, "error": str(e)}
+        return {"earningsDate": None, "symbol": sym, "error": str(e)}
+
+    return {"earningsDate": None, "symbol": sym}
+
+# ── Earnings Debug ───────────────────────────────────────────────────────────
+@app.get("/earnings-debug/{symbol}")
+async def earnings_debug(symbol: str):
+    """Debug endpoint to see raw yfinance data"""
+    sym = symbol.upper()
+    try:
+        import yfinance as yf
+        import pandas as pd
+        ticker = yf.Ticker(sym)
+        
+        # Get raw calendar
+        cal = ticker.calendar
+        cal_type = str(type(cal))
+        cal_raw = None
+        if cal is not None:
+            if isinstance(cal, dict):
+                cal_raw = {k: [str(v) for v in (vals if isinstance(vals, list) else [vals])] 
+                          for k, vals in cal.items()}
+            else:
+                try:
+                    cal_raw = cal.to_dict()
+                except:
+                    cal_raw = str(cal)
+        
+        # Get info earnings fields
+        info = ticker.info
+        earnings_fields = {k: v for k, v in info.items() 
+                          if 'earn' in k.lower() or 'calendar' in k.lower()}
+        
+        return {
+            "symbol": sym,
+            "calendar_type": cal_type,
+            "calendar_data": cal_raw,
+            "earnings_info_fields": earnings_fields,
+        }
+    except Exception as e:
+        return {"symbol": sym, "error": str(e)}
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
