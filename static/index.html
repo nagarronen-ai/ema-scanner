@@ -411,6 +411,7 @@ UNH</textarea>
   <div style="border:1px solid var(--border);border-radius:var(--r);overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:var(--bg3);cursor:pointer;" onclick="tlToggle('positions')">
       <span style="font-size:13px;font-weight:600;">📈 Positions</span>
+      <button class="btn-sm" onclick="event.stopPropagation();loadAllEarnings()" style="font-size:11px;background:rgba(79,110,247,.1);color:var(--accent);border:1px solid rgba(79,110,247,.25);">📅 טען Earnings</button>
       <span id="tl-positions-count" style="font-size:12px;color:var(--muted);"></span>
       <span id="tl-positions-arrow" style="color:var(--muted);">▼</span>
     </div>
@@ -716,7 +717,7 @@ UNH</textarea>
 // Master password → PBKDF2 → AES-256-GCM key
 // Sensitive keys encrypted: tradier_token, tt_client_id, tt_client_secret, tt_refresh_token
 
-const SENSITIVE_KEYS=['tradier_token','tradier_account','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember'];
+const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember'];
 const SALT_KEY='_enc_salt';
 const MASTER_CHECK_KEY='_enc_check';
 let _cryptoKey=null;
@@ -840,10 +841,10 @@ async function submitPassword(){
 }
 
 async function restoreDecryptedFields(){
-  // Tradier token
-  const token=await secureGet('tradier_token');
+  // Tradier token — env specific
+  const token=await secureGet(tradierTokenKey());
   if(token){const el=document.getElementById('api-token');if(el)el.value=token;}
-  const acct=await secureGet('tradier_account');
+  const acct=await secureGet(tradierAcctKey());
   if(acct){const el=document.getElementById('account-id');if(el)el.value=acct;}
   // TastyTrade
   const cid=await secureGet('tt_client_id');
@@ -1095,6 +1096,9 @@ let tradierEnv='live',autoScanTimer=null;
 const BASE=()=>tradierEnv==='sandbox'?'https://sandbox.tradier.com/v1':'https://api.tradier.com/v1';
 const TOKEN=()=>document.getElementById('api-token').value.trim();
 const ACCT=()=>document.getElementById('account-id').value.trim();
+// Per-env storage keys
+const tradierTokenKey=()=>'tradier_token_'+(tradierEnv||'sandbox');
+const tradierAcctKey=()=>'tradier_account_'+(tradierEnv||'sandbox');
 
 async function tGet(path,params={},_log){
   const url=new URL(BASE()+path);
@@ -1427,7 +1431,20 @@ function setEnv(e){
   document.getElementById('btn-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-live').className=e==='live'?'active':'';
   localStorage.setItem('tradier_env',e);
-  _switchScanContext();
+  // Load credentials for this env
+  restoreDecryptedFields();
+  // Switch journal only — NOT scan (scan is not account-specific)
+  _switchJournalOnly();
+}
+
+function _switchJournalOnly(){
+  // Only reset trade log cache — keep scan results
+  _tradesCache=[];
+  _tradesCacheKey='';
+  updateTradeLogBadge();
+  const modal=document.getElementById('trade-log-modal');
+  if(modal&&modal.className.includes('show')) renderTradeLog();
+  addLog('📋 יומן: '+currentJournalKey(),'li');
 }
 async function testConnection(){
   if(!TOKEN()){addLog("✗ הכנס token","le");return;}
@@ -1448,9 +1465,9 @@ async function testConnection(){
 }
 async function saveConfig(){
   if(!_encInitialized){showPasswordModal('unlock',()=>saveConfig());return;}
-  await secureSet('tradier_token',TOKEN());
-  await secureSet('tradier_account',ACCT());
-  addLog('✓ נשמר (מוצפן)','lo');
+  await secureSet(tradierTokenKey(),TOKEN());
+  await secureSet(tradierAcctKey(),ACCT());
+  addLog('✓ נשמר עבור Tradier '+(tradierEnv||'sandbox')+' (מוצפן)','lo');
   exportToServer();
 }
 function getTickers(){return document.getElementById('tickers').value.split(/[\n,\s]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);}
@@ -2195,6 +2212,8 @@ const TT_BASE=()=>ttEnv==='sandbox'?'https://api.cert.tastyworks.com':'https://a
 function setBroker(b){
   activeBroker=b;
   localStorage.setItem('active_broker',b);
+  // Switch scan context when broker changes (different data source)
+  // But keep scan results when just switching env within same broker
   _switchScanContext();
   const btnT=document.getElementById('broker-tradier');
   const btnTT=document.getElementById('broker-tastytrade');
@@ -2301,11 +2320,7 @@ async function ttLoadAccounts(){
 }
 
 function _switchScanContext(){
-  // Save current results/bars before switching
-  if(results.length>0){
-    // Already saved on scan completion, just update timestamp
-  }
-  // Clear in-memory cache (will be reloaded from localStorage for new context)
+  // Clear in-memory scan cache — reload from localStorage for new context
   results=[];
   rawBarsCache={};
   spyRet3mCache=null;
@@ -2449,6 +2464,63 @@ async function ttCancelOrder(orderId){
 }
 
 // ── Broker-aware wrappers (used by scan + trade log) ─────────────────────────
+// ── EARNINGS DATE ─────────────────────────────────────────────────────────────
+async function fetchEarningsDate(ticker){
+  try{
+    if(IS_SERVER){
+      // Use server proxy (Railway)
+      const r=await fetch('/earnings-proxy/'+ticker);
+      if(r.ok){const d=await r.json();return d.earningsDate||null;}
+    }
+    // Fallback: Yahoo Finance directly (may fail due to CORS on some browsers)
+    const r=await fetch(
+      'https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+ticker+'?modules=calendarEvents',
+      {headers:{'Accept':'application/json'}}
+    );
+    if(!r.ok) return null;
+    const data=await r.json();
+    const dates=data?.quoteSummary?.result?.[0]?.calendarEvents?.earnings?.earningsDate||[];
+    if(dates.length>0){
+      const ts=dates[0]?.raw||0;
+      if(ts){
+        const d=new Date(ts*1000);
+        return d.toISOString().slice(0,10);
+      }
+    }
+    return null;
+  }catch(e){
+    addLog('⚠ Earnings fetch error '+ticker+': '+e.message,'le');
+    return null;
+  }
+}
+
+async function updatePositionEarnings(ticker, orderId){
+  addLog('📅 טוען Earnings עבור '+ticker+'...','li');
+  const date=await fetchEarningsDate(ticker);
+  if(!date){addLog('⚠ '+ticker+': לא נמצא תאריך Earnings','le');return null;}
+  const log=getTradeLog();
+  const idx=log.findIndex(e=>String(e.orderId)===String(orderId));
+  if(idx>=0){
+    log[idx].earningsDate=date;
+    saveTradeLog(log);
+    renderTradeLog();
+    addLog('📅 '+ticker+' Earnings: '+date,'lo');
+  }
+  return date;
+}
+
+// Load earnings for all open positions at once
+async function loadAllEarnings(){
+  const log=getTradeLog();
+  const openBuys=log.filter(e=>e.side==='buy'&&e.status==='open');
+  addLog('📅 טוען Earnings עבור '+openBuys.length+' פוזיציות...','li');
+  for(const e of openBuys){
+    await updatePositionEarnings(e.ticker, e.orderId);
+    await new Promise(r=>setTimeout(r,300)); // rate limit
+  }
+  addLog('✓ Earnings נטענו','lo');
+}
+
 async function brokerGetHistory(symbol,days=320){
   if(activeBroker==='tastytrade') return ttGetHistory(symbol,days);
   return fetchHistory(symbol,days); // Tradier
@@ -3205,16 +3277,16 @@ function exportTradeLog(){
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
-try{
-  const tok=localStorage.getItem('tradier_token');
-  const acc=localStorage.getItem('tradier_account');
+(async()=>{try{
+  const tok=await secureGet(tradierTokenKey());
+  const acc=await secureGet(tradierAcctKey());
   const env=localStorage.getItem('tradier_env');
   if(tok)document.getElementById('api-token').value=tok;
   if(acc)document.getElementById('account-id').value=acc;
   if(env)setEnv(env);
   const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
   if(c&&Date.now()-c.ts<86400000){results=c.data;updateStats();renderTable();document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');addLog('תוצאות נטענו מטמון','lo');lastAppliedParams=getCurrentParams();}
-}catch(_){}
+}catch(_){}})();
 // ── DAILY POSITION CHECK ─────────────────────────────────────────────────────
 // Checks all open positions every day at 16:10 ET (after market close)
 // Updates P&L, stop status, and order fills from Tradier
