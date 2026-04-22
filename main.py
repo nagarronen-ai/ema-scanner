@@ -112,103 +112,88 @@ async def save_results(request: Request):
 # ── Earnings Date Proxy (Yahoo Finance) ──────────────────────────────────────
 @app.get("/earnings-proxy/{symbol}")
 async def earnings_proxy(symbol: str):
-    """Fetch next earnings date using yfinance"""
-    from datetime import datetime, timezone
-    import pandas as pd
+    """Fetch next earnings date via Yahoo Finance chart API"""
+    from datetime import datetime
     sym = symbol.upper()
-    try:
-        import yfinance as yf
-        ticker = yf.Ticker(sym)
-
-        # Method 1: ticker.calendar (dict format in newer yfinance)
-        cal = ticker.calendar
-        if cal is not None:
-            # Dict format: {'Earnings Date': [Timestamp, ...], ...}
-            if isinstance(cal, dict):
-                dates = cal.get("Earnings Date", [])
-                if not isinstance(dates, list):
-                    dates = [dates]
-                now = datetime.now(timezone.utc)
-                for d in dates:
-                    try:
-                        ts = pd.Timestamp(d)
-                        if ts.tzinfo is None:
-                            ts = ts.tz_localize("UTC")
-                        if ts > pd.Timestamp(now):
-                            return {"earningsDate": str(ts)[:10], "symbol": sym}
-                    except Exception:
-                        pass
-                # If no future date, return the latest
-                if dates:
-                    return {"earningsDate": str(pd.Timestamp(dates[0]))[:10], "symbol": sym}
-
-            # DataFrame format (older yfinance)
-            elif hasattr(cal, 'loc'):
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "application/json,text/html,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Referer": "https://finance.yahoo.com/",
+        "Origin": "https://finance.yahoo.com",
+        "Cache-Control": "no-cache",
+    }
+    
+    async with httpx.AsyncClient(timeout=20, follow_redirects=True, 
+                                  headers=headers) as client:
+        # Try chart v8 — has earningsTimestamp in meta
+        for host in ["query1", "query2"]:
+            try:
+                r = await client.get(
+                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
+                    params={"interval": "1d", "range": "1d", "includePrePost": "false"}
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    meta = data.get("chart",{}).get("result",[{}])[0].get("meta",{})
+                    # earningsTimestampStart = next earnings
+                    for key in ["earningsTimestampStart", "earningsTimestamp", "earningsTimestampEnd"]:
+                        ts = meta.get(key)
+                        if ts and int(ts) > datetime.now().timestamp():
+                            return {"earningsDate": datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d"), "symbol": sym}
+            except Exception:
+                continue
+        
+        # Fallback: quoteSummary calendarEvents
+        for host in ["query1", "query2"]:
+            for ver in ["v10", "v11"]:
                 try:
-                    row = cal.loc["Earnings Date"] if "Earnings Date" in cal.index else None
-                    if row is not None:
-                        vals = row.values if hasattr(row, 'values') else [row]
-                        for v in vals:
-                            if pd.notna(v):
-                                return {"earningsDate": str(v)[:10], "symbol": sym}
+                    r = await client.get(
+                        f"https://{host}.finance.yahoo.com/{ver}/finance/quoteSummary/{sym}",
+                        params={"modules": "calendarEvents,earnings"}
+                    )
+                    if r.status_code != 200:
+                        continue
+                    data = r.json()
+                    res = (data.get("quoteSummary",{}).get("result") or [{}])[0]
+                    dates = (res.get("calendarEvents",{})
+                               .get("earnings",{})
+                               .get("earningsDate",[]))
+                    now_ts = datetime.now().timestamp()
+                    for d in dates:
+                        ts = d.get("raw",0) if isinstance(d,dict) else d
+                        if ts and int(ts) > now_ts:
+                            return {"earningsDate": datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d"), "symbol": sym}
                 except Exception:
-                    pass
-
-        # Method 2: ticker.info earningsDate (Unix timestamp)
-        try:
-            info = ticker.info
-            for key in ["earningsDate", "earningsTimestamp", "nextEarningsDate"]:
-                val = info.get(key)
-                if val:
-                    if isinstance(val, (int, float)) and val > 0:
-                        return {"earningsDate": datetime.fromtimestamp(int(val)).strftime("%Y-%m-%d"), "symbol": sym}
-                    if isinstance(val, str) and len(val) >= 10:
-                        return {"earningsDate": val[:10], "symbol": sym}
-        except Exception:
-            pass
-
-    except Exception as e:
-        return {"earningsDate": None, "symbol": sym, "error": str(e)}
+                    continue
 
     return {"earningsDate": None, "symbol": sym}
 
 # ── Earnings Debug ───────────────────────────────────────────────────────────
 @app.get("/earnings-debug/{symbol}")
 async def earnings_debug(symbol: str):
-    """Debug endpoint to see raw yfinance data"""
+    """Debug: show raw Yahoo Finance chart meta for symbol"""
+    from datetime import datetime
     sym = symbol.upper()
-    try:
-        import yfinance as yf
-        import pandas as pd
-        ticker = yf.Ticker(sym)
-        
-        # Get raw calendar
-        cal = ticker.calendar
-        cal_type = str(type(cal))
-        cal_raw = None
-        if cal is not None:
-            if isinstance(cal, dict):
-                cal_raw = {k: [str(v) for v in (vals if isinstance(vals, list) else [vals])] 
-                          for k, vals in cal.items()}
-            else:
-                try:
-                    cal_raw = cal.to_dict()
-                except:
-                    cal_raw = str(cal)
-        
-        # Get info earnings fields
-        info = ticker.info
-        earnings_fields = {k: v for k, v in info.items() 
-                          if 'earn' in k.lower() or 'calendar' in k.lower()}
-        
-        return {
-            "symbol": sym,
-            "calendar_type": cal_type,
-            "calendar_data": cal_raw,
-            "earnings_info_fields": earnings_fields,
-        }
-    except Exception as e:
-        return {"symbol": sym, "error": str(e)}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "Referer": "https://finance.yahoo.com/",
+    }
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        try:
+            r = await client.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
+                params={"interval":"1d","range":"1d"},
+                headers=headers
+            )
+            data = r.json()
+            meta = data.get("chart",{}).get("result",[{}])[0].get("meta",{})
+            earnings_keys = {k:v for k,v in meta.items() if 'earn' in k.lower()}
+            return {"status": r.status_code, "earnings_keys": earnings_keys, "meta_sample": dict(list(meta.items())[:5])}
+        except Exception as e:
+            return {"error": str(e)}
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
