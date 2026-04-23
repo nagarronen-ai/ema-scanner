@@ -174,26 +174,47 @@ async def earnings_proxy(symbol: str):
 # ── Earnings Debug ───────────────────────────────────────────────────────────
 @app.get("/earnings-debug/{symbol}")
 async def earnings_debug(symbol: str):
-    """Debug: show raw Yahoo Finance chart meta for symbol"""
+    """Debug: try all Yahoo Finance endpoints for earnings"""
     from datetime import datetime
     sym = symbol.upper()
     headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Referer": "https://finance.yahoo.com/",
+        "Accept": "application/json",
     }
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+    results = {}
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
+        # Test quoteSummary calendarEvents
         try:
             r = await client.get(
-                f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
-                params={"interval":"1d","range":"1d"},
-                headers=headers
+                f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{sym}",
+                params={"modules": "calendarEvents"}
             )
             data = r.json()
-            meta = data.get("chart",{}).get("result",[{}])[0].get("meta",{})
-            earnings_keys = {k:v for k,v in meta.items() if 'earn' in k.lower()}
-            return {"status": r.status_code, "earnings_keys": earnings_keys, "meta_sample": dict(list(meta.items())[:5])}
+            res = (data.get("quoteSummary",{}).get("result") or [{}])[0]
+            cal = res.get("calendarEvents",{})
+            results["v10_calendarEvents"] = {"status": r.status_code, "data": cal}
         except Exception as e:
-            return {"error": str(e)}
+            results["v10_calendarEvents"] = {"error": str(e)}
+
+        # Test quote endpoint
+        try:
+            r = await client.get(
+                f"https://query1.finance.yahoo.com/v7/finance/quote",
+                params={"symbols": sym, "fields": "earningsDate,earningsTimestamp"}
+            )
+            data = r.json()
+            quote = data.get("quoteResponse",{}).get("result",[{}])[0]
+            results["v7_quote_earnings"] = {
+                "status": r.status_code,
+                "earningsDate": quote.get("earningsDate"),
+                "earningsTimestamp": quote.get("earningsTimestamp"),
+                "earningsCurrentEstimate": quote.get("earningsCurrentEstimate"),
+            }
+        except Exception as e:
+            results["v7_quote"] = {"error": str(e)}
+
+    return results
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
