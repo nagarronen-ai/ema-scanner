@@ -3683,15 +3683,52 @@ async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,q
     }
   }
 
-  // Sync stop statuses
+  // Sync stop orders FROM Tradier → local log (price + status)
   for(let i=0;i<log.length;i++){
     const e=log[i];
     if(e.side!=='sell'||e.source!=='stop')continue;
     if(e.status==='filled'||e.status==='canceled')continue;
+
     const tradierOrd=allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId));
     if(tradierOrd){
-      if(ad.isFilledOrd(tradierOrd)){log[i].status='filled';log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);updated++;}
-      else if(ad.isCanceledOrd(tradierOrd)){log[i].status='canceled';updated++;}
+      // Sync status
+      if(ad.isFilledOrd(tradierOrd)){
+        log[i].status='filled';
+        log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);
+        updated++;
+      } else if(ad.isCanceledOrd(tradierOrd)){
+        log[i].status='canceled';
+        updated++;
+      } else {
+        // Check price mismatch between local log and Tradier
+        const tradierPrice=ad.getOrdPrice(tradierOrd);
+        const localPrice=log[i].price;
+        if(tradierPrice&&localPrice&&Math.abs(tradierPrice-localPrice)>0.01){
+          // Mismatch detected — log it and prefer Tradier (source of truth)
+          addLog('⚠ '+e.ticker+' מחיר סטופ שונה: מקומי $'+localPrice+' | Tradier $'+tradierPrice,'le');
+          addLog('→ מתעדכן לפי Tradier ($'+tradierPrice+')','li');
+          log[i].price=tradierPrice;
+          // Also update the buy entry stopPrice
+          const bi2=log.findIndex(b=>b.side==='buy'&&b.ticker===e.ticker&&(String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId)));
+          if(bi2>=0) log[bi2].stopPrice=tradierPrice;
+          updated++;
+        }
+      }
+      // Also sync buy entry's stopPrice
+      const buyIdx=log.findIndex(b=>
+        b.side==='buy'&&b.ticker===e.ticker&&
+        (String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId))
+      );
+      if(buyIdx>=0&&!ad.isCanceledOrd(tradierOrd)&&!ad.isFilledOrd(tradierOrd)){
+        const tradierPrice=ad.getOrdPrice(tradierOrd);
+        if(tradierPrice) log[buyIdx].stopPrice=tradierPrice;
+      }
+    } else {
+      // Stop not in Tradier orders — was it canceled externally?
+      // Only flag if it was previously pending (not just old)
+      if(e.status==='pending'){
+        addLog('⚠ '+e.ticker+' סטופ לא נמצא ב-Tradier — ייתכן שבוטל חיצונית','le');
+      }
     }
   }
 
