@@ -2466,32 +2466,47 @@ async function ttCancelOrder(orderId){
 // ── Broker-aware wrappers (used by scan + trade log) ─────────────────────────
 // ── EARNINGS DATE ─────────────────────────────────────────────────────────────
 async function fetchEarningsDate(ticker){
+  // Always fetch from browser — Railway IP is blocked by Yahoo Finance
+  // Try multiple Yahoo Finance endpoints
+  const endpoints=[
+    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`,
+    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`,
+    `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${ticker}?modules=calendarEvents`,
+  ];
+  for(const url of endpoints){
+    try{
+      const r=await fetch(url,{
+        headers:{'Accept':'application/json','Accept-Language':'en-US,en;q=0.9'}
+      });
+      if(!r.ok) continue;
+      const data=await r.json();
+      const dates=data?.quoteSummary?.result?.[0]?.calendarEvents?.earnings?.earningsDate||[];
+      if(dates.length>0){
+        // Find next future earnings date
+        const now=Date.now()/1000;
+        const future=dates.filter(d=>(d?.raw||0)>now);
+        const ts=(future.length?future[0]:dates[0])?.raw||0;
+        if(ts) return new Date(ts*1000).toISOString().slice(0,10);
+      }
+    }catch(_){continue;}
+  }
+  // Try v7/quote endpoint
   try{
-    if(IS_SERVER){
-      // Use server proxy (Railway)
-      const r=await fetch('/earnings-proxy/'+ticker);
-      if(r.ok){const d=await r.json();return d.earningsDate||null;}
-    }
-    // Fallback: Yahoo Finance directly (may fail due to CORS on some browsers)
     const r=await fetch(
-      'https://query1.finance.yahoo.com/v10/finance/quoteSummary/'+ticker+'?modules=calendarEvents',
+      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=earningsTimestamp,earningsDate`,
       {headers:{'Accept':'application/json'}}
     );
-    if(!r.ok) return null;
-    const data=await r.json();
-    const dates=data?.quoteSummary?.result?.[0]?.calendarEvents?.earnings?.earningsDate||[];
-    if(dates.length>0){
-      const ts=dates[0]?.raw||0;
+    if(r.ok){
+      const data=await r.json();
+      const q=data?.quoteResponse?.result?.[0];
+      const ts=q?.earningsTimestamp||q?.earningsDate;
       if(ts){
-        const d=new Date(ts*1000);
+        const d=typeof ts==='number'?new Date(ts*1000):new Date(ts);
         return d.toISOString().slice(0,10);
       }
     }
-    return null;
-  }catch(e){
-    addLog('⚠ Earnings fetch error '+ticker+': '+e.message,'le');
-    return null;
-  }
+  }catch(_){}
+  return null;
 }
 
 async function updatePositionEarnings(ticker, orderId){
