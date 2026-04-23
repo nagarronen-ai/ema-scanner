@@ -144,17 +144,16 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <input type="password" id="api-token" placeholder="הכנס Tradier token..."/>
     <label>Account ID (למסחר בלבד)</label>
     <input type="text" id="account-id" placeholder="12345678"/>
-    <div class="row" style="margin-top:10px;">
-      <button class="btn-primary btn-sm" onclick="testConnection()">בדוק חיבור</button>
+    <div style="display:flex;gap:6px;margin-top:10px;">
+      <button class="btn-primary btn-sm" style="flex:1;" onclick="testConnection()">בדוק חיבור</button>
+      <button class="btn-secondary btn-sm" style="flex:1;" onclick="saveConfig()">שמור</button>
     </div>
-    <div style="margin-top:8px;">
-      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">📅 Finnhub Key (Earnings)</label>
+    <div style="margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">
+      <label style="font-size:11px;color:var(--muted);display:block;margin-bottom:4px;">📅 Finnhub Key</label>
       <div style="display:flex;gap:6px;">
-        <input type="text" id="finnhub-key" placeholder="api key..." style="flex:1;font-size:11px;"/>
+        <input type="password" id="finnhub-key" placeholder="API key..." style="flex:1;font-size:11px;"/>
         <button class="btn-secondary btn-sm" onclick="saveFinnhubKey(document.getElementById('finnhub-key').value)">שמור</button>
       </div>
-    <div style="display:none;">
-      <button class="btn-secondary btn-sm" onclick="saveConfig()">שמור</button>
     </div>
   </div>
 
