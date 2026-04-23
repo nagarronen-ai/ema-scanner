@@ -3270,20 +3270,51 @@ ${atr?'ATR: $'+atr.toFixed(2)+' × '+mult+' → הצעה: $'+suggested:'ATR לא
 async function cancelStop(ticker,buyOrderId,stopId){
   if(!confirm('לבטל את פקודת הסטופ עבור '+ticker+'?'))return;
   if(!TOKEN()||!ACCT()){alert('חסר token');return;}
+
+  // Try API cancel — if fails (Suspended/sandbox) still update locally
+  let apiOk=false;
   try{
-    // Cancel via PUT status=cancel (Tradier API)
     await tCancelOrder(stopId);
-    const log=getTradeLog();
-    // Update buy entry
-    const buyIdx=log.findIndex(e=>e.orderId===buyOrderId);
-    if(buyIdx>=0){log[buyIdx].stopId=null;log[buyIdx].stopPrice=null;}
-    // Update sell (stop) entry status
-    const stopIdx=log.findIndex(e=>String(e.orderId)===String(stopId));
-    if(stopIdx>=0){log[stopIdx].status='canceled';}
-    saveTradeLog(log);
-    addLog('✕ '+ticker+' סטופ בוטל (ID: '+stopId+')','lo');
-    renderTradeLog();
-  }catch(e){addLog('✗ ביטול סטופ נכשל: '+e.message,'le');}
+    apiOk=true;
+  }catch(e){
+    const suspended=e.message.includes('Suspended')||e.message.includes('suspended')||e.message.includes('400');
+    if(!suspended){
+      addLog('✗ ביטול סטופ נכשל: '+e.message,'le');
+      return; // Real error — don't update locally
+    }
+    addLog('⚠ Sandbox Suspended — מבטל מקומית','le');
+  }
+
+  // Always update log — remove stop, restore "+ סטופ" button on position
+  const log=getTradeLog();
+  const buyIdx=log.findIndex(e=>String(e.orderId)===String(buyOrderId)||
+    (e.ticker===ticker&&e.side==='buy'&&(e.status==='open'||e.status==='pending')));
+  if(buyIdx>=0){
+    log[buyIdx].stopId=null;
+    log[buyIdx].stopPrice=null;
+  }
+  const stopIdx=log.findIndex(e=>String(e.orderId)===String(stopId));
+  if(stopIdx>=0) log[stopIdx].status='canceled';
+
+  saveTradeLog(log);
+  addLog((apiOk?'✕ ':'⚠ ')+ticker+' סטופ בוטל'+(apiOk?'':' (מקומי)')+' — לחץ "+ סטופ" לשלוח חדש','lo');
+  renderTradeLog();
+
+  // Auto-verify with Tradier after 2s
+  setTimeout(async()=>{
+    addLog('🔄 בודק סטטוס אחרי ביטול '+ticker+'...','li');
+    try{
+      const orders=await tGet('/accounts/'+ACCT()+'/orders');
+      let raw=orders.orders?.order||[];
+      if(!Array.isArray(raw))raw=raw?[raw]:[];
+      const still=raw.find(o=>String(o.id)===String(stopId));
+      if(!still||still.status==='canceled'||still.status==='expired'){
+        addLog('✓ '+ticker+' סטופ אושר כמבוטל ב-Tradier','lo');
+      } else {
+        addLog('⚠ '+ticker+' סטופ עדיין פעיל ב-Tradier ('+still.status+')','le');
+      }
+    }catch(e){addLog('⚠ אימות ביטול נכשל: '+e.message,'le');}
+  },2000);
 }
 
 function clearTradeLog(){
