@@ -717,7 +717,7 @@ UNH</textarea>
 // Master password → PBKDF2 → AES-256-GCM key
 // Sensitive keys encrypted: tradier_token, tt_client_id, tt_client_secret, tt_refresh_token
 
-const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember'];
+const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember','finnhub_key'];
 const SALT_KEY='_enc_salt';
 const MASTER_CHECK_KEY='_enc_check';
 let _cryptoKey=null;
@@ -849,6 +849,13 @@ async function restoreDecryptedFields(){
   // TastyTrade
   const cid=await secureGet('tt_client_id');
   if(cid){const el=document.getElementById('tt-client-id');if(el)el.value=cid;}
+  // Restore Finnhub key
+  const fhKey=await secureGet('finnhub_key');
+  if(fhKey){
+    FINNHUB_KEY=fhKey;
+    const el=document.getElementById('finnhub-key');
+    if(el)el.value=fhKey;
+  }
   const cs=await secureGet('tt_client_secret');
   if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
   const rt=await secureGet('tt_refresh_token');
@@ -1463,6 +1470,13 @@ async function testConnection(){
       addLog("→ שגיאת CORS — ודא שה-token נכון ו-sandbox/live מתאים","li");
   }
 }
+async function saveFinnhubKey(val){
+  if(!val) return;
+  FINNHUB_KEY=val.trim();
+  await secureSet('finnhub_key',FINNHUB_KEY);
+  addLog('✓ Finnhub key נשמר (מוצפן)','lo');
+}
+
 async function saveConfig(){
   if(!_encInitialized){showPasswordModal('unlock',()=>saveConfig());return;}
   await secureSet(tradierTokenKey(),TOKEN());
@@ -2465,47 +2479,37 @@ async function ttCancelOrder(orderId){
 
 // ── Broker-aware wrappers (used by scan + trade log) ─────────────────────────
 // ── EARNINGS DATE ─────────────────────────────────────────────────────────────
+// Finnhub API key (stored encrypted)
+let FINNHUB_KEY='';
+
+async function getFinnhubKey(){
+  if(FINNHUB_KEY) return FINNHUB_KEY;
+  // Try from localStorage (encrypted)
+  const saved=await secureGet('finnhub_key');
+  if(saved){FINNHUB_KEY=saved;return FINNHUB_KEY;}
+  return null;
+}
+
 async function fetchEarningsDate(ticker){
-  // Always fetch from browser — Railway IP is blocked by Yahoo Finance
-  // Try multiple Yahoo Finance endpoints
-  const endpoints=[
-    `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`,
-    `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${ticker}?modules=calendarEvents`,
-    `https://query1.finance.yahoo.com/v11/finance/quoteSummary/${ticker}?modules=calendarEvents`,
-  ];
-  for(const url of endpoints){
-    try{
-      const r=await fetch(url,{
-        headers:{'Accept':'application/json','Accept-Language':'en-US,en;q=0.9'}
-      });
-      if(!r.ok) continue;
-      const data=await r.json();
-      const dates=data?.quoteSummary?.result?.[0]?.calendarEvents?.earnings?.earningsDate||[];
-      if(dates.length>0){
-        // Find next future earnings date
-        const now=Date.now()/1000;
-        const future=dates.filter(d=>(d?.raw||0)>now);
-        const ts=(future.length?future[0]:dates[0])?.raw||0;
-        if(ts) return new Date(ts*1000).toISOString().slice(0,10);
-      }
-    }catch(_){continue;}
-  }
-  // Try v7/quote endpoint
+  const key=await getFinnhubKey();
+  if(!key){addLog('⚠ הגדר Finnhub API key בהגדרות','le');return null;}
   try{
+    // Finnhub allows CORS from any origin
     const r=await fetch(
-      `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${ticker}&fields=earningsTimestamp,earningsDate`,
-      {headers:{'Accept':'application/json'}}
+      `https://finnhub.io/api/v1/calendar/earnings?symbol=${ticker}&token=${key}`
     );
-    if(r.ok){
-      const data=await r.json();
-      const q=data?.quoteResponse?.result?.[0];
-      const ts=q?.earningsTimestamp||q?.earningsDate;
-      if(ts){
-        const d=typeof ts==='number'?new Date(ts*1000):new Date(ts);
-        return d.toISOString().slice(0,10);
-      }
-    }
-  }catch(_){}
+    if(!r.ok) throw new Error('Finnhub '+r.status);
+    const data=await r.json();
+    const events=data.earningsCalendar||[];
+    const now=new Date().toISOString().slice(0,10);
+    // Find next future earnings date
+    const future=events.filter(e=>e.date>=now).sort((a,b)=>a.date.localeCompare(b.date));
+    if(future.length>0) return future[0].date;
+    // If no future, return most recent
+    if(events.length>0) return events[events.length-1].date;
+  }catch(e){
+    addLog('⚠ Finnhub earnings '+ticker+': '+e.message,'le');
+  }
   return null;
 }
 
