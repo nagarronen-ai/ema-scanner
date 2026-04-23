@@ -2484,9 +2484,15 @@ let FINNHUB_KEY='';
 
 async function getFinnhubKey(){
   if(FINNHUB_KEY) return FINNHUB_KEY;
-  // Try from localStorage (encrypted)
+  // Check input field first
+  const el=document.getElementById('finnhub-key');
+  if(el&&el.value.trim()){FINNHUB_KEY=el.value.trim();return FINNHUB_KEY;}
+  // Try from encrypted storage
   const saved=await secureGet('finnhub_key');
   if(saved){FINNHUB_KEY=saved;return FINNHUB_KEY;}
+  // Fallback: direct localStorage (unencrypted)
+  const direct=localStorage.getItem('finnhub_key');
+  if(direct&&!direct.startsWith('enc:')){FINNHUB_KEY=direct;return FINNHUB_KEY;}
   return null;
 }
 
