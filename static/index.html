@@ -3089,23 +3089,49 @@ async function sellPosition(ticker, qty, buyOrderId, stopOrderId, orderType){
 async function sendManualStop(ticker,qty,buyOrderId){
   if(!TOKEN()||!ACCT()){alert('חסר token או Account ID');return;}
 
-  // Find fill price from log
+  // Find fill price from log — use String comparison
   const log=getTradeLog();
-  const entry=log.find(e=>e.orderId===buyOrderId);
-  const fillPrice=entry?.fillPrice||entry?.price||null;
+  const entry=log.find(e=>String(e.orderId)===String(buyOrderId))||
+              log.find(e=>e.ticker===ticker&&e.side==='buy'&&(e.status==='open'||e.status==='pending'));
+  const fillPrice=parseFloat(entry?.fillPrice||entry?.price||0)||null;
 
-  // Try to get ATR from scan results
-  const scanResult=results.find(r=>r.ticker===ticker);
-  const atr=scanResult?.atr||null;
+  // Get live price
+  let livePrice=null;
+  try{
+    const q=await tGet('/markets/quotes',{symbols:ticker,greeks:'false'});
+    const raw=q.quotes?.quote;
+    const qt=Array.isArray(raw)?raw[0]:raw;
+    livePrice=parseFloat(qt?.last||qt?.bid||0)||null;
+  }catch(_){}
+
   const mult=parseFloat((document.getElementById('atr-mult')||{value:'1.5'}).value)||1.5;
 
-  // Calculate auto stop
-  let suggestedStop=null;
-  if(fillPrice&&atr){
-    suggestedStop=(fillPrice-atr*mult).toFixed(2);
-  } else if(fillPrice){
-    suggestedStop=(fillPrice*0.97).toFixed(2); // fallback: 3% below entry
+  // Get ATR — from scan or calculate from history
+  let atr=results.find(r=>r.ticker===ticker)?.atr||null;
+  if(!atr){
+    try{
+      const now=new Date(),start=new Date();
+      start.setDate(start.getDate()-30);
+      const fmt=d=>d.toISOString().slice(0,10);
+      const hist=await tGet('/markets/history',{symbol:ticker,interval:'daily',start:fmt(start),end:fmt(now)});
+      const bars=hist.history?.day||[];
+      const bArr=Array.isArray(bars)?bars:[bars];
+      if(bArr.length>=15){
+        const trArr=[];
+        for(let i=1;i<bArr.length;i++){
+          const h=parseFloat(bArr[i].high),l=parseFloat(bArr[i].low),pc=parseFloat(bArr[i-1].close);
+          if(!isNaN(h)&&!isNaN(l)&&!isNaN(pc))trArr.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc)));
+        }
+        if(trArr.length>=14) atr=trArr.slice(-14).reduce((a,b)=>a+b,0)/14;
+      }
+    }catch(_){}
   }
+
+  // Calculate suggested stop based on live price (or fill price as fallback)
+  const basePrice=livePrice||fillPrice;
+  let suggestedStop=null;
+  if(basePrice&&atr) suggestedStop=(basePrice-atr*mult).toFixed(2);
+  else if(fillPrice) suggestedStop=(fillPrice*0.97).toFixed(2);
 
   // Show confirmation with auto-calculated price
   const msg=suggestedStop
