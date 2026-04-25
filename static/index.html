@@ -2333,28 +2333,54 @@ async function ttLogin(){
 }
 
 async function ttLoadAccounts(){
+  let accounts=[];
+  // Try /customers/me/accounts first
   try{
     const data=await ttRequest('GET','/customers/me/accounts');
-    const accounts=data.data?.items||[];
-    const select=document.getElementById('tt-account-select');
+    accounts=(data.data?.items||[]).map(a=>a.account);
+  }catch(_){}
+  // Fallback: try direct /accounts (OAuth permissioning)
+  if(accounts.length===0){
+    try{
+      const data=await ttRequest('GET','/accounts');
+      accounts=data.data?.items||[];
+    }catch(_){}
+  }
+
+  const select=document.getElementById('tt-account-select');
+  if(accounts.length>0){
     select.innerHTML=accounts.map(a=>{
-      const num=a.account['account-number'];
-      const type=a.account['account-type-name']||'';
-      const nick=a.account['nickname']||num;
+      const num=a['account-number']||a.number;
+      const type=a['account-type-name']||a.type||'';
+      const nick=a['nickname']||num;
       return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
     }).join('');
-    if(accounts.length>0){
-      ttAccountNumber=accounts[0].account['account-number'];
-      select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
-      document.getElementById('tt-accounts-row').style.display='';
-      // Auto-restore last selected account
-      const saved=localStorage.getItem('tt_account');
-      if(saved&&accounts.find(a=>a.account['account-number']===saved)){
-        select.value=saved;ttAccountNumber=saved;
-      }
-      addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
+    ttAccountNumber=accounts[0]['account-number']||accounts[0].number;
+    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
+    document.getElementById('tt-accounts-row').style.display='';
+    const saved=localStorage.getItem('tt_account');
+    if(saved&&accounts.find(a=>(a['account-number']||a.number)===saved)){
+      select.value=saved;ttAccountNumber=saved;
     }
-  }catch(e){addLog('✗ TastyTrade accounts: '+e.message,'le');}
+    addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
+  } else {
+    // Manual entry fallback
+    const savedManual=localStorage.getItem('tt_account_manual');
+    if(savedManual){
+      ttAccountNumber=savedManual;
+      addLog('✓ TastyTrade: חשבון ידני '+savedManual,'lo');
+    } else {
+      const acct=prompt('OAuth Grant לא כלל חשבונות. הזן מספר חשבון TastyTrade ידנית:\n(לדוגמה: 5WT00000)');
+      if(acct&&acct.trim()){
+        ttAccountNumber=acct.trim();
+        localStorage.setItem('tt_account_manual',ttAccountNumber);
+        localStorage.setItem('tt_account',ttAccountNumber);
+        addLog('✓ TastyTrade: חשבון ידני '+ttAccountNumber+' נשמר','lo');
+      } else {
+        addLog('⚠ TastyTrade: לא הוגדר חשבון','le');
+      }
+    }
+  }
 }
 
 function _switchScanContext(){
