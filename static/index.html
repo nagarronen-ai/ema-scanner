@@ -111,7 +111,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <div class="dot" id="dot"></div>
     EMA Crossover Scanner
     <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
-    <span class="badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;">v3.3 · 09.04.2026</span>
+    <span class="badge" id="version-badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;cursor:pointer;" onclick="openVersionModal()">v3.4 · 25.04.2026</span>
     <span class="badge badge-amber" id="market-badge">...</span>
   </h1>
   <div style="display:flex;gap:8px;align-items:center;">
@@ -2243,7 +2243,7 @@ function openVersionModal(){
   document.getElementById('version-modal').className='modal-overlay show';
 }
 // ── TASTYTRADE API ───────────────────────────────────────────────────────────
-let ttEnv='sandbox', ttSessionToken=null, ttAccountNumber=null, activeBroker='tradier';
+let ttEnv='sandbox', ttSessionToken=null, ttAccountNumber=null, activeBroker='tradier', ttTokenIssuedAt=0;
 
 const TT_BASE=()=>ttEnv==='sandbox'?'https://api.cert.tastyworks.com':'https://api.tastytrade.com';
 
@@ -2271,6 +2271,29 @@ function setTTEnv(e){
   _switchScanContext();
 }
 
+// Auto-refresh OAuth access_token if older than 14 min (tokens expire at 15 min)
+async function ttEnsureValidToken(){
+  const ageMs=Date.now()-ttTokenIssuedAt;
+  if(!ttSessionToken||ageMs>14*60*1000){
+    const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+    const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+    const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
+    if(!clientId||!clientSecret||!refreshToken) return;
+    try{
+      const headers={'Content-Type':'application/json'};
+      const url='/tt-proxy/oauth/token?_env='+ttEnv;
+      const r=await fetch(url,{method:'POST',headers,body:JSON.stringify({
+        grant_type:'refresh_token',refresh_token:refreshToken,
+        client_id:clientId,client_secret:clientSecret
+      })});
+      if(!r.ok) return;
+      const data=await r.json();
+      ttSessionToken=data['access_token']||data.data?.['access_token'];
+      ttTokenIssuedAt=Date.now();
+    }catch(_){}
+  }
+}
+
 async function ttRequest(method, path, body=null){
   const headers={'Content-Type':'application/json','X-TT-Env':ttEnv};
   if(ttSessionToken) headers['Authorization']=ttSessionToken;
@@ -2280,6 +2303,18 @@ async function ttRequest(method, path, body=null){
   const url=IS_SERVER?('/tt-proxy'+path):(TT_BASE()+path);
   const r=await fetch(url,opts);
   if(!r.ok){
+    // Retry once on 401 - token might have expired mid-request
+    if(r.status===401&&!path.includes('/oauth/token')){
+      ttTokenIssuedAt=0; // Force refresh
+      await ttEnsureValidToken();
+      if(ttSessionToken){
+        const headers2={'Content-Type':'application/json','Authorization':'Bearer '+ttSessionToken};
+        const opts2={method,headers:headers2};
+        if(body) opts2.body=JSON.stringify(body);
+        const r2=await fetch(url,opts2);
+        if(r2.ok) return r2.json();
+      }
+    }
     const err=await r.json().catch(()=>({}));
     throw new Error('TT '+r.status+': '+(err?.error?.message||err?.errors?.[0]?.detail||r.statusText));
   }
@@ -2305,6 +2340,7 @@ async function ttLogin(){
     });
     ttSessionToken=data['access_token']||data.data?.['session-token']||data.data?.['access_token'];
     if(!ttSessionToken) throw new Error('לא התקבל token');
+    ttTokenIssuedAt=Date.now();
     localStorage.setItem('tt_session',ttSessionToken);
     localStorage.setItem('tt_client_id',clientId);
     localStorage.setItem('tt_client_secret',clientSecret);
@@ -3807,6 +3843,10 @@ updateTradeLogBadge();
 });
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
+
+// Update version badge dynamically
+const verBadge=document.getElementById('version-badge');
+if(verBadge) verBadge.textContent=APP_VERSION+' · '+APP_DATE;
 
 // STABILITY: Save state when tab loses focus or page unloads
 window.addEventListener('visibilitychange',()=>{
