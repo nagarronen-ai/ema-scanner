@@ -1,12 +1,13 @@
 """
-EMA Crossover Scanner — FastAPI Backend v3.1
-Multi-broker journal + TastyTrade proxy
+EMA Crossover Scanner — FastAPI Backend v3.4
+Multi-broker journal + TastyTrade proxy + encrypted credentials + admin auth
 """
-from fastapi import FastAPI, HTTPException, Request, Path
+from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, json, os, uvicorn
+import httpx, os, uvicorn
+from datetime import datetime
 from database import Database
 
 app = FastAPI(title="EMA Scanner")
@@ -14,6 +15,60 @@ db  = Database()
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"],
                    allow_methods=["*"], allow_headers=["*"])
+
+# ── Admin Token Verification ──────────────────────────────────────────────────
+async def verify_admin(authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        if not db.is_admin_set():
+            return True
+        raise HTTPException(status_code=401, detail="Missing admin token")
+    token = authorization[7:]
+    if not db.verify_admin_token(token):
+        raise HTTPException(status_code=403, detail="Invalid admin token")
+    return True
+
+@app.post("/api/admin/setup")
+async def setup_admin(request: Request):
+    body = await request.json()
+    new_token = body.get("token", "").strip()
+    if not new_token or len(new_token) < 8:
+        raise HTTPException(status_code=400, detail="Token must be at least 8 chars")
+    if db.is_admin_set():
+        old_token = body.get("current_token", "")
+        if not db.verify_admin_token(old_token):
+            raise HTTPException(status_code=403, detail="Current token incorrect")
+    db.set_admin_token(new_token)
+    return {"ok": True}
+
+@app.post("/api/admin/verify")
+async def verify_admin_endpoint(request: Request):
+    body = await request.json()
+    token = body.get("token", "")
+    return {"valid": db.verify_admin_token(token)}
+
+@app.get("/api/admin/status")
+def admin_status():
+    return {"isSet": db.is_admin_set()}
+
+# ── Encrypted Credentials ─────────────────────────────────────────────────────
+@app.get("/api/credentials", dependencies=[Depends(verify_admin)])
+def get_credentials():
+    return db.get_credentials()
+
+@app.post("/api/credentials", dependencies=[Depends(verify_admin)])
+async def save_credentials(request: Request):
+    db.save_credentials(await request.json())
+    return {"ok": True}
+
+@app.get("/api/finnhub_key", dependencies=[Depends(verify_admin)])
+def get_finnhub():
+    return {"key": db.get_finnhub_key()}
+
+@app.post("/api/finnhub_key", dependencies=[Depends(verify_admin)])
+async def save_finnhub(request: Request):
+    body = await request.json()
+    db.save_finnhub_key(body.get("key", ""))
+    return {"ok": True}
 
 # ── TastyTrade Proxy ──────────────────────────────────────────────────────────
 TT_LIVE    = "https://api.tastytrade.com"
@@ -38,7 +93,32 @@ async def tt_proxy(path: str, request: Request):
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
 
-# ── Multi-broker Journal ──────────────────────────────────────────────────────
+# ── Earnings (Finnhub) ────────────────────────────────────────────────────────
+@app.get("/earnings-proxy/{symbol}")
+async def earnings_proxy(symbol: str):
+    sym = symbol.upper()
+    key = db.get_finnhub_key()
+    if not key:
+        return {"earningsDate": None, "symbol": sym, "error": "Finnhub key not set"}
+    try:
+        from datetime import timedelta
+        now = datetime.now()
+        f, t = (now - timedelta(days=90)).strftime("%Y-%m-%d"), (now + timedelta(days=180)).strftime("%Y-%m-%d")
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(f"https://finnhub.io/api/v1/calendar/earnings?symbol={sym}&from={f}&to={t}&token={key}")
+            data = r.json()
+        events = sorted(data.get("earningsCalendar", []), key=lambda e: e["date"])
+        today = now.strftime("%Y-%m-%d")
+        future = [e for e in events if e["date"] >= today]
+        if future:
+            return {"earningsDate": future[0]["date"], "symbol": sym}
+        if events:
+            return {"earningsDate": events[-1]["date"] + " (past)", "symbol": sym}
+    except Exception as e:
+        return {"earningsDate": None, "symbol": sym, "error": str(e)}
+    return {"earningsDate": None, "symbol": sym}
+
+# ── Journal ───────────────────────────────────────────────────────────────────
 @app.get("/api/journal/{broker}/{env}")
 def get_journal(broker: str, env: str):
     return db.get_journal(broker, env)
@@ -50,7 +130,7 @@ async def save_journal(broker: str, env: str, request: Request):
         db.save_journal(broker, env, trades)
     return {"ok": True}
 
-# ── Permanent Closed Trades ───────────────────────────────────────────────────
+# ── Closed trades ─────────────────────────────────────────────────────────────
 @app.get("/api/closed_trades")
 def get_closed():
     return db.get_closed_trades()
@@ -62,7 +142,7 @@ async def save_closed(request: Request):
         db.save_closed_trades(trades)
     return {"ok": True}
 
-# ── Legacy trades endpoint (backward compat) ──────────────────────────────────
+# Legacy compat
 @app.get("/api/trades")
 def get_trades():
     return db.get_journal("tradier", "live")
@@ -74,27 +154,21 @@ async def save_trades(request: Request):
         db.save_journal("tradier", "live", trades)
     return {"ok": True}
 
-# ── Settings ──────────────────────────────────────────────────────────────────
+# ── Settings, Lists, Cache ────────────────────────────────────────────────────
 @app.get("/api/settings")
-def get_settings():
-    return db.get_settings()
+def get_settings(): return db.get_settings()
 
 @app.post("/api/settings")
 async def save_settings(request: Request):
-    db.save_settings(await request.json())
-    return {"ok": True}
+    db.save_settings(await request.json()); return {"ok": True}
 
-# ── Lists ─────────────────────────────────────────────────────────────────────
 @app.get("/api/lists")
-def get_lists():
-    return db.get_lists()
+def get_lists(): return db.get_lists()
 
 @app.post("/api/lists")
 async def save_lists(request: Request):
-    db.save_lists(await request.json())
-    return {"ok": True}
+    db.save_lists(await request.json()); return {"ok": True}
 
-# ── Cache ─────────────────────────────────────────────────────────────────────
 @app.get("/api/cache/bars")
 def get_bars():  return db.get_bars_cache()
 
@@ -109,118 +183,11 @@ def get_results(): return db.get_results_cache()
 async def save_results(request: Request):
     db.save_results_cache(await request.json()); return {"ok": True}
 
-# ── Earnings Date Proxy (Yahoo Finance) ──────────────────────────────────────
-@app.get("/earnings-proxy/{symbol}")
-async def earnings_proxy(symbol: str):
-    """Fetch next earnings date via Yahoo Finance chart API"""
-    from datetime import datetime
-    sym = symbol.upper()
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json,text/html,*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Referer": "https://finance.yahoo.com/",
-        "Origin": "https://finance.yahoo.com",
-        "Cache-Control": "no-cache",
-    }
-    
-    async with httpx.AsyncClient(timeout=20, follow_redirects=True, 
-                                  headers=headers) as client:
-        # Try chart v8 — has earningsTimestamp in meta
-        for host in ["query1", "query2"]:
-            try:
-                r = await client.get(
-                    f"https://{host}.finance.yahoo.com/v8/finance/chart/{sym}",
-                    params={"interval": "1d", "range": "1d", "includePrePost": "false"}
-                )
-                if r.status_code == 200:
-                    data = r.json()
-                    meta = data.get("chart",{}).get("result",[{}])[0].get("meta",{})
-                    # earningsTimestampStart = next earnings
-                    for key in ["earningsTimestampStart", "earningsTimestamp", "earningsTimestampEnd"]:
-                        ts = meta.get(key)
-                        if ts and int(ts) > datetime.now().timestamp():
-                            return {"earningsDate": datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d"), "symbol": sym}
-            except Exception:
-                continue
-        
-        # Fallback: quoteSummary calendarEvents
-        for host in ["query1", "query2"]:
-            for ver in ["v10", "v11"]:
-                try:
-                    r = await client.get(
-                        f"https://{host}.finance.yahoo.com/{ver}/finance/quoteSummary/{sym}",
-                        params={"modules": "calendarEvents,earnings"}
-                    )
-                    if r.status_code != 200:
-                        continue
-                    data = r.json()
-                    res = (data.get("quoteSummary",{}).get("result") or [{}])[0]
-                    dates = (res.get("calendarEvents",{})
-                               .get("earnings",{})
-                               .get("earningsDate",[]))
-                    now_ts = datetime.now().timestamp()
-                    for d in dates:
-                        ts = d.get("raw",0) if isinstance(d,dict) else d
-                        if ts and int(ts) > now_ts:
-                            return {"earningsDate": datetime.fromtimestamp(int(ts)).strftime("%Y-%m-%d"), "symbol": sym}
-                except Exception:
-                    continue
-
-    return {"earningsDate": None, "symbol": sym}
-
-# ── Earnings Debug ───────────────────────────────────────────────────────────
-@app.get("/earnings-debug/{symbol}")
-async def earnings_debug(symbol: str):
-    """Debug: try all Yahoo Finance endpoints for earnings"""
-    from datetime import datetime
-    sym = symbol.upper()
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Referer": "https://finance.yahoo.com/",
-        "Accept": "application/json",
-    }
-    results = {}
-    async with httpx.AsyncClient(timeout=15, follow_redirects=True, headers=headers) as client:
-        # Test quoteSummary calendarEvents
-        try:
-            r = await client.get(
-                f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{sym}",
-                params={"modules": "calendarEvents"}
-            )
-            data = r.json()
-            res = (data.get("quoteSummary",{}).get("result") or [{}])[0]
-            cal = res.get("calendarEvents",{})
-            results["v10_calendarEvents"] = {"status": r.status_code, "data": cal}
-        except Exception as e:
-            results["v10_calendarEvents"] = {"error": str(e)}
-
-        # Test quote endpoint
-        try:
-            r = await client.get(
-                f"https://query1.finance.yahoo.com/v7/finance/quote",
-                params={"symbols": sym, "fields": "earningsDate,earningsTimestamp"}
-            )
-            data = r.json()
-            quote = data.get("quoteResponse",{}).get("result",[{}])[0]
-            results["v7_quote_earnings"] = {
-                "status": r.status_code,
-                "earningsDate": quote.get("earningsDate"),
-                "earningsTimestamp": quote.get("earningsTimestamp"),
-                "earningsCurrentEstimate": quote.get("earningsCurrentEstimate"),
-            }
-        except Exception as e:
-            results["v7_quote"] = {"error": str(e)}
-
-    return results
-
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.3",
-            "journals": ["tradier/live","tradier/sandbox","tt/live","tt/sandbox"]}
+    return {"status": "ok", "version": "v3.4",
+            "secure_storage": True, "admin_set": db.is_admin_set()}
 
 # ── Static ────────────────────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="static"), name="static")

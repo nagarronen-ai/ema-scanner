@@ -121,6 +121,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
     <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
     <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
+    <button class="btn-amber btn-sm" onclick="openCopyModal()">📋 קבל קוד לשמירה</button>
     <button class="btn-secondary btn-sm" onclick="exportCSV()">ייצוא CSV</button>
   </div>
 </div>
@@ -978,38 +979,29 @@ function getTradeLog(){
 let _tradesCacheKey='';
 
 function saveTradeLog(log){
-  if(!Array.isArray(log)){console.warn('saveTradeLog: invalid log');return;}
   const key=currentJournalKey();
-  // Tag each entry with broker+env
+  // Tag each entry with broker+env if not already tagged
   log.forEach(e=>{
     if(!e.broker) e.broker=activeBroker||'tradier';
     if(!e.env) e.env=activeBroker==='tradier'?tradierEnv:ttEnv;
   });
   // Extract closed buy positions → save permanently
-  try{
-    const newClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
-    if(newClosed.length>0){
-      const existing=getClosedTrades();
-      const existingIds=new Set(existing.map(e=>String(e.orderId)));
-      const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
-      if(toAdd.length>0){
-        saveClosedTrades([...existing,...toAdd]);
-        toAdd.forEach(e=>generateAILesson(e));
-      }
+  const newClosed=log.filter(e=>e.status==='closed'&&e.side==='buy');
+  if(newClosed.length>0){
+    const existing=getClosedTrades();
+    const existingIds=new Set(existing.map(e=>String(e.orderId)));
+    const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
+    if(toAdd.length>0){
+      saveClosedTrades([...existing,...toAdd]);
+      // Generate AI lessons for newly closed trades
+      toAdd.forEach(e=>generateAILesson(e));
     }
-  }catch(e){console.error('Closed trades save failed:',e);}
-
+  }
   _tradesCache=log;
   _tradesCacheKey=key;
-  try{
-    localStorage.setItem(key, JSON.stringify(log));
-  }catch(e){
-    addLog('⚠ שגיאת שמירה: '+e.message,'le');
-    console.error('saveTradeLog localStorage failed:',e);
-    return;
-  }
-  // Sync to server (fire-and-forget)
-  apiPost(getJournalApiPath(), log).catch(e=>console.warn('Server sync failed:',e));
+  localStorage.setItem(key, JSON.stringify(log));
+  // Sync to server
+  apiPost(getJournalApiPath(), log);
 }
 
 function getLists(){
@@ -1018,10 +1010,8 @@ function getLists(){
 }
 
 function saveLists(lists){
-  // Update memory cache and localStorage
   _listsCache = lists;
   localStorage.setItem('ema_lists', JSON.stringify(lists));
-  // Sync to server (fire-and-forget) — but ensure all data goes
   apiPost('lists', lists);
 }
 
@@ -1042,28 +1032,11 @@ async function loadFromServer(){
       localStorage.setItem(CLOSED_KEY, JSON.stringify(closedPerm));
       console.log('✓ Loaded', closedPerm.length, 'permanent closed trades');
     }
-    // Load lists — merge with local (don't lose newer local lists)
-    const serverLists = await apiGet('lists', null);
-    const localLists = JSON.parse(localStorage.getItem('ema_lists')||'{}');
-    if(serverLists && typeof serverLists === 'object'){
-      // Merge: server is source, but keep any local-only lists
-      const merged = {...serverLists};
-      for(const [name, tickers] of Object.entries(localLists)){
-        if(!merged[name] || (Array.isArray(tickers) && tickers.length > (merged[name]?.length||0))){
-          merged[name] = tickers;
-        }
-      }
-      _listsCache = merged;
-      localStorage.setItem('ema_lists', JSON.stringify(merged));
-      // Push merged back to server to keep in sync
-      if(Object.keys(merged).length !== Object.keys(serverLists).length){
-        apiPost('lists', merged);
-      }
-      console.log('✓ Loaded lists:', Object.keys(merged).length);
-    } else if(Object.keys(localLists).length > 0){
-      _listsCache = localLists;
-      // Push local to server (first time)
-      apiPost('lists', localLists);
+    // Load lists into memory cache
+    const lists = await apiGet('lists', null);
+    if(lists && typeof lists === 'object'){
+      _listsCache = lists;
+      localStorage.setItem('ema_lists', JSON.stringify(lists));
     }
     // Load bars cache
     const bars = await apiGet('cache/bars', null);
@@ -1080,13 +1053,21 @@ async function loadFromServer(){
       try{ window._results=results.data; }catch(_){}
     }
     addLog('✅ נטענו נתונים מהשרת: '+(_tradesCache.length)+' עסקאות, '+(Object.keys(_listsCache).length)+' רשימות','lo');
-    // Re-render list buttons after server load
-    if(typeof renderListBtns==='function') renderListBtns();
   }catch(e){ 
     console.warn('Server load failed:', e);
     addLog('⚠ טעינה מהשרת נכשלה — משתמש בנתונים מקומיים','le');
   }
 }
+
+// Override getLists/saveLists to sync with server
+const _origGetLists = window.getLists;
+window.getLists = function(){
+  try{ return JSON.parse(localStorage.getItem('ema_lists')||'{}'); }catch(_){ return {}; }
+};
+window.saveLists = function(lists){
+  localStorage.setItem('ema_lists', JSON.stringify(lists));
+  apiPost('lists', lists);
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1098,10 +1079,9 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.4';
-const APP_DATE='25.04.2026';
+const APP_VERSION='v3.3';
+const APP_DATE='22.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.4', date:'25.04.2026', notes:'Stability: persistence audit, journal switching robustness, save guards on context change, server-encrypted credentials, admin token, TT positions fix'},
   {v:'v3.3', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
   {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
   {v:'v2.6', date:'07.04.2025', notes:'MyList כתיבה מחדש, Paste מלוח, עדכון שם, EXCHANGE:TICKER format'},
@@ -1115,11 +1095,14 @@ const VERSION_HISTORY=[
 
 let results=[],rawBarsCache={},spyRet3mCache=null,currentFilter='all',sortCol='signal',sortDir=-1;
 
-// Scan results are GLOBAL — not tied to broker/env
-// (market data is the same regardless of which account you trade with)
-function scanCacheKey(){ return 'global'; }
-function resultsCacheKey(){ return 'ema_results'; }
-function barsCacheKey(){ return 'ema_bars_cache'; }
+function scanCacheKey(){
+  // Unique cache key per broker+env combo
+  const broker=activeBroker||'tradier';
+  const env=broker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
+  return broker+'_'+env;
+}
+function resultsCacheKey(){ return 'ema_results_'+scanCacheKey(); }
+function barsCacheKey(){ return 'ema_bars_cache_'+scanCacheKey(); }
 let lastAppliedParams={};let paramsDirty=false;
 let scanning=false,stopFlag=false,selectedTickers=new Set();
 let tradierEnv='live',autoScanTimer=null;
@@ -2358,18 +2341,37 @@ async function ttLoadAccounts(){
 }
 
 function _switchScanContext(){
-  // STABILITY: Save current state before switching
+  // Clear in-memory scan cache — reload from localStorage for new context
+  results=[];
+  rawBarsCache={};
+  spyRet3mCache=null;
+  // Try load cached scan for new context
   try{
-    if(_tradesCache&&_tradesCache.length>0&&_tradesCacheKey){
-      localStorage.setItem(_tradesCacheKey,JSON.stringify(_tradesCache));
+    const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
+    if(c&&Date.now()-c.ts<86400000&&c.data?.length){
+      results=c.data;
+      updateStats();renderTable();
+      document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');
+      addLog('✓ נטען מטמון עבור '+scanCacheKey()+' ('+results.length+' מניות)','lo');
+    } else {
+      updateStats();renderTable();
+      addLog('ℹ '+scanCacheKey()+' — אין מטמון, בצע סריקה','li');
     }
-  }catch(e){console.warn('Pre-switch save failed:',e);}
-
-  // Scan stays global — refresh journal for new context
+  }catch(_){}
+  // Try load bars cache
+  try{
+    const saved=JSON.parse(localStorage.getItem(barsCacheKey())||'null');
+    if(saved&&Date.now()-saved.ts<24*3600*1000&&saved.cache){
+      saved.cache.forEach(([t,bars])=>{rawBarsCache[t]=bars;});
+    }
+  }catch(_){}
   checkParamsDirty();
+  lastAppliedParams=getCurrentParams();
+  // Refresh trade log for new journal
   _tradesCache=[];
   _tradesCacheKey='';
   updateTradeLogBadge();
+  // If trade log modal is open, refresh it
   const modal=document.getElementById('trade-log-modal');
   if(modal&&modal.className.includes('show')) renderTradeLog();
   addLog('📋 יומן: '+currentJournalKey(),'li');
@@ -2664,23 +2666,11 @@ function editClosedTrade(orderId){
 }
 
 function deleteClosedTrade(orderId){
-  if(!confirm('למחוק עסקה זו לצמיתות?\n(לא ניתן לשחזר)'))return;
-  // 1. Remove from active trade log
+  if(!confirm('למחוק עסקה זו?'))return;
   const log=getTradeLog();
   const idx=log.findIndex(e=>String(e.orderId)===String(orderId));
-  if(idx>=0){log.splice(idx,1);}
-  _tradesCache=log;
-  _tradesCacheKey=currentJournalKey();
-  localStorage.setItem(currentJournalKey(),JSON.stringify(log));
-  apiPost(getJournalApiPath(),log);
-  // 2. Remove from permanent closed trades
-  const allClosed=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
-  const filtered=allClosed.filter(e=>String(e.orderId)!==String(orderId));
-  localStorage.setItem(CLOSED_KEY,JSON.stringify(filtered));
-  // Sync to server
-  apiPost('closed_trades',filtered);
-  updateTradeLogBadge();
-  addLog('🗑 עסקה נמחקה לצמיתות','le');
+  if(idx>=0){log.splice(idx,1);saveTradeLog(log);updateTradeLogBadge();}
+  addLog('🗑 עסקה נמחקה','');
   renderTradeLog();
 }
 
@@ -3518,19 +3508,7 @@ async function checkAllPositionsTT(){
   try{
     // 1. Positions
     let positions=[];
-    try{
-      const allPos=await ttGetPositions();
-      addLog('TT raw positions: '+allPos.length,'li');
-      // Filter only EQUITY positions with non-zero qty
-      positions=allPos.filter(p=>{
-        const itype=(p['instrument-type']||'').toLowerCase();
-        const qty=Math.abs(parseFloat(p['quantity']||0));
-        return itype==='equity'&&qty>0;
-      });
-      if(positions.length>0){
-        addLog('TT equity positions: '+positions.map(p=>(p.symbol||p['underlying-symbol'])+' x'+p.quantity).join(', '),'li');
-      }
-    }catch(e){addLog('TT positions error: '+e.message,'le');}
+    try{ positions=await ttGetPositions(); }catch(_){}
 
     // 2. Balance
     try{
@@ -3557,10 +3535,10 @@ async function checkAllPositionsTT(){
 
     await _processPositions(log,positions,allOrders,[],[],quotes,updated,
       {
-        getPosSymbol: p=>p.symbol||p['underlying-symbol'],
-        getPosQty: p=>Math.abs(parseFloat(p['quantity']||0)),
-        getPosCost: p=>parseFloat(p['average-open-price']||p['close-price']||p['cost-effect']||0),
-        getPosDate: p=>p['created-at']||p['updated-at'],
+        getPosSymbol: p=>p['underlying-symbol']||p.symbol,
+        getPosQty: p=>parseFloat(p['quantity']||0),
+        getPosCost: p=>parseFloat(p['average-open-price']||p['cost-effect']||0),
+        getPosDate: p=>p['created-at'],
         getOrdId: o=>String(o.id),
         getOrdSymbol: o=>o.legs?.[0]?.symbol||o.symbol,
         getOrdSide: o=>{const a=o.legs?.[0]?.action||''; return a.toLowerCase().includes('buy')?'buy':'sell';},
@@ -3705,52 +3683,15 @@ async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,q
     }
   }
 
-  // Sync stop orders FROM Tradier → local log (price + status)
+  // Sync stop statuses
   for(let i=0;i<log.length;i++){
     const e=log[i];
     if(e.side!=='sell'||e.source!=='stop')continue;
     if(e.status==='filled'||e.status==='canceled')continue;
-
     const tradierOrd=allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId));
     if(tradierOrd){
-      // Sync status
-      if(ad.isFilledOrd(tradierOrd)){
-        log[i].status='filled';
-        log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);
-        updated++;
-      } else if(ad.isCanceledOrd(tradierOrd)){
-        log[i].status='canceled';
-        updated++;
-      } else {
-        // Check price mismatch between local log and Tradier
-        const tradierPrice=ad.getOrdPrice(tradierOrd);
-        const localPrice=log[i].price;
-        if(tradierPrice&&localPrice&&Math.abs(tradierPrice-localPrice)>0.01){
-          // Mismatch detected — log it and prefer Tradier (source of truth)
-          addLog('⚠ '+e.ticker+' מחיר סטופ שונה: מקומי $'+localPrice+' | Tradier $'+tradierPrice,'le');
-          addLog('→ מתעדכן לפי Tradier ($'+tradierPrice+')','li');
-          log[i].price=tradierPrice;
-          // Also update the buy entry stopPrice
-          const bi2=log.findIndex(b=>b.side==='buy'&&b.ticker===e.ticker&&(String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId)));
-          if(bi2>=0) log[bi2].stopPrice=tradierPrice;
-          updated++;
-        }
-      }
-      // Also sync buy entry's stopPrice
-      const buyIdx=log.findIndex(b=>
-        b.side==='buy'&&b.ticker===e.ticker&&
-        (String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId))
-      );
-      if(buyIdx>=0&&!ad.isCanceledOrd(tradierOrd)&&!ad.isFilledOrd(tradierOrd)){
-        const tradierPrice=ad.getOrdPrice(tradierOrd);
-        if(tradierPrice) log[buyIdx].stopPrice=tradierPrice;
-      }
-    } else {
-      // Stop not in Tradier orders — was it canceled externally?
-      // Only flag if it was previously pending (not just old)
-      if(e.status==='pending'){
-        addLog('⚠ '+e.ticker+' סטופ לא נמצא ב-Tradier — ייתכן שבוטל חיצונית','le');
-      }
+      if(ad.isFilledOrd(tradierOrd)){log[i].status='filled';log[i].fillPrice=ad.getOrdFillPrice(tradierOrd);updated++;}
+      else if(ad.isCanceledOrd(tradierOrd)){log[i].status='canceled';updated++;}
     }
   }
 
@@ -3781,23 +3722,6 @@ updateTradeLogBadge();
 });
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
-
-// STABILITY: Save state when tab loses focus or page unloads
-window.addEventListener('visibilitychange',()=>{
-  if(document.visibilityState==='hidden'&&_tradesCache&&_tradesCache.length>0){
-    try{
-      localStorage.setItem(_tradesCacheKey||currentJournalKey(),JSON.stringify(_tradesCache));
-      apiPost(getJournalApiPath(),_tradesCache);
-    }catch(_){}
-  }
-});
-window.addEventListener('beforeunload',()=>{
-  try{
-    if(_tradesCache&&_tradesCache.length>0){
-      localStorage.setItem(_tradesCacheKey||currentJournalKey(),JSON.stringify(_tradesCache));
-    }
-  }catch(_){}
-});
 // Show encryption password modal if data is encrypted
 if(localStorage.getItem(MASTER_CHECK_KEY)){
   showPasswordModal('unlock');
@@ -3807,33 +3731,6 @@ if(localStorage.getItem(MASTER_CHECK_KEY)){
     if(!_encInitialized) showPasswordModal('create');
   },1500);
 }
-// Migrate per-broker scan cache to global (one-time)
-try{
-  if(!localStorage.getItem('_scan_global_migrated')){
-    const oldKeys=['ema_results_tradier_live','ema_results_tradier_sandbox','ema_results_tt_live','ema_results_tt_sandbox'];
-    let bestData=null,bestTs=0;
-    oldKeys.forEach(k=>{
-      try{
-        const d=JSON.parse(localStorage.getItem(k)||'null');
-        if(d&&d.ts>bestTs){bestData=d;bestTs=d.ts;}
-        localStorage.removeItem(k);
-      }catch(_){}
-    });
-    if(bestData) localStorage.setItem('ema_results',JSON.stringify(bestData));
-    // Migrate bars
-    const barKeys=['ema_bars_cache_tradier_live','ema_bars_cache_tradier_sandbox','ema_bars_cache_tt_live','ema_bars_cache_tt_sandbox'];
-    let bestBars=null,bestBarsTs=0;
-    barKeys.forEach(k=>{
-      try{
-        const d=JSON.parse(localStorage.getItem(k)||'null');
-        if(d&&d.ts>bestBarsTs){bestBars=d;bestBarsTs=d.ts;}
-        localStorage.removeItem(k);
-      }catch(_){}
-    });
-    if(bestBars) localStorage.setItem('ema_bars_cache',JSON.stringify(bestBars));
-    localStorage.setItem('_scan_global_migrated','1');
-  }
-}catch(_){}
 // Migrate legacy trade_log to tradier-live journal (one-time migration)
 try{
   const legacy=localStorage.getItem('trade_log');
