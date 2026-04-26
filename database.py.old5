@@ -103,34 +103,15 @@ class Database:
         })
 
     def verify_admin_token(self, token: str) -> bool:
-        """Verify admin token (master) OR a session token"""
-        # Check session tokens first
-        sessions = self._get("session_tokens", [])
-        if token in sessions:
-            return True
-        # Fallback: master admin token
+        """Verify admin token against stored hash"""
         stored = self._get("admin_token_hash")
         if not stored:
+            # No admin set — allow first write to set it
             return True
         salt = base64.b64decode(stored["salt"])
         expected = base64.b64decode(stored["hash"])
         actual = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, 100000)
         return secrets.compare_digest(expected, actual)
-
-    def add_session_token(self, token: str):
-        """Store session token for multi-device support"""
-        sessions = self._get("session_tokens", [])
-        sessions.append(token)
-        # Keep last 20 active sessions
-        if len(sessions) > 20:
-            sessions = sessions[-20:]
-        self._set("session_tokens", sessions)
-
-    def remove_session_token(self, token: str):
-        sessions = self._get("session_tokens", [])
-        if token in sessions:
-            sessions.remove(token)
-            self._set("session_tokens", sessions)
 
     def is_admin_set(self) -> bool:
         return self._get("admin_token_hash") is not None

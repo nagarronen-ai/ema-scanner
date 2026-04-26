@@ -895,11 +895,7 @@ function showLoginScreen(){
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">שם משתמש</label>
           <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
-          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#888;margin-bottom:14px;cursor:pointer;">
-            <input type="checkbox" id="login-remember" checked style="width:14px;height:14px;cursor:pointer;"/>
-            השאר אותי מחובר
-          </label>
+          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">כניסה</button>
         </div>
         <div id="login-step-2" style="display:none !important;">
@@ -945,10 +941,9 @@ async function doLoginStep1(){
     }
     const data = await r.json();
     if(data.token){
-      const remember = document.getElementById('login-remember')?.checked !== false;
-      setAdminToken(data.token, remember);
+      setAdminToken(data.token);
       hideLoginScreen();
-      addLog('✓ התחברות הצליחה'+(remember?' (נשמר)':''),'lo');
+      addLog('✓ התחברות הצליחה','lo');
       if(typeof loadFromServer==='function') loadFromServer();
     }
   }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
@@ -1051,38 +1046,22 @@ async function confirmRestorePassword(){
   });
 }
 
-async function logout(){
-  if(!confirm('להתנתק מהמערכת?')) return;
-  // Tell server to invalidate session token
-  if(_adminToken){
-    try{
-      await fetch('/api/auth/logout',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+_adminToken}
-      });
-    }catch(_){}
-  }
+function logout(){
   _loginComplete = false;
   _adminToken = '';
-  localStorage.removeItem('_admin_token');
   sessionStorage.removeItem('_admin_token');
   sessionStorage.removeItem('_enc_session');
   _cryptoKey = null;
   _encInitialized = false;
-  addLog('🔒 התנתקות','le');
   showLoginScreen();
 }
 
 // ── ADMIN TOKEN — protects all server endpoints ──────────────────────────────
-let _adminToken = localStorage.getItem('_admin_token') || sessionStorage.getItem('_admin_token') || '';
+let _adminToken = sessionStorage.getItem('_admin_token') || '';
 
-async function setAdminToken(token, remember=true){
+async function setAdminToken(token){
   _adminToken = token;
-  if(remember){
-    localStorage.setItem('_admin_token', token);
-  } else {
-    sessionStorage.setItem('_admin_token', token);
-  }
+  sessionStorage.setItem('_admin_token', token);
 }
 
 async function ensureAdminToken(){

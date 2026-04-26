@@ -83,18 +83,10 @@ async def auth_login(request: Request):
         raise HTTPException(status_code=400, detail="System not initialized")
     if not db.verify_user_password(username, password):
         raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
-    # Issue session token — register it without replacing admin_token_hash
+    # Issue session token (no 2FA for now)
     token = secrets.token_urlsafe(32)
-    db.add_session_token(token)
+    db.set_admin_token(token)
     return {"token": token}
-
-
-@app.post("/api/auth/logout")
-async def auth_logout(request: Request):
-    auth = request.headers.get("authorization", "")
-    if auth.startswith("Bearer "):
-        db.remove_session_token(auth[7:])
-    return {"ok": True}
 
 @app.post("/api/auth/verify_2fa")
 async def auth_verify_2fa(request: Request):
