@@ -839,6 +839,7 @@ async function submitPassword(){
   const ok=await initEncryption(pw);
   if(!ok){document.getElementById('enc-error').textContent='סיסמה שגויה — נסה שוב';return;}
   _encInitialized=true;
+  sessionStorage.setItem('_enc_session', pw); // Auto-unlock until browser closes
   document.getElementById('enc-modal').className='modal-overlay';
   addLog('🔐 הצפנה פעילה','lo');
   // Re-populate fields with decrypted values
@@ -3844,9 +3845,93 @@ updateTradeLogBadge();
 // Initialize lastAppliedParams from current UI values
 lastAppliedParams=getCurrentParams();
 
+// AUTO BACKUP — sync to server every 15 minutes if changes detected
+let _lastBackupTime=0;
+let _changesPending=false;
+
+function markChanges(){_changesPending=true;}
+
+setInterval(async()=>{
+  if(!_changesPending) return;
+  if(Date.now()-_lastBackupTime<15*60*1000) return; // Min 15min between backups
+  try{
+    await exportToServer();
+    _lastBackupTime=Date.now();
+    _changesPending=false;
+    addLog('💾 גיבוי אוטומטי בוצע','li');
+  }catch(e){addLog('⚠ גיבוי אוטומטי נכשל: '+e.message,'le');}
+},5*60*1000); // Check every 5 min
+
+// Hook into save functions to mark changes
+const _origSaveTradeLog=saveTradeLog;
+saveTradeLog=function(log){_origSaveTradeLog(log);markChanges();};
+
+const _origSaveLists=saveLists;
+saveLists=function(lists){_origSaveLists(lists);markChanges();};
+
+// IDLE AUTO-LOGOUT — clear session after 30min of inactivity
+const IDLE_TIMEOUT_MS=30*60*1000; // 30 minutes
+let _lastActivity=Date.now();
+let _idleWarned=false;
+
+function resetIdleTimer(){
+  _lastActivity=Date.now();
+  _idleWarned=false;
+}
+['mousedown','keydown','touchstart','scroll'].forEach(ev=>{
+  document.addEventListener(ev, resetIdleTimer, {passive:true});
+});
+
+setInterval(()=>{
+  const idle=Date.now()-_lastActivity;
+  // Warn 1 minute before logout
+  if(idle>=29*60*1000&&!_idleWarned){
+    _idleWarned=true;
+    addLog('⚠ ניתוק אוטומטי בעוד דקה עקב חוסר פעילות','le');
+  }
+  if(idle>=IDLE_TIMEOUT_MS){
+    addLog('🔒 ניתוק אוטומטי — 30 דקות ללא פעילות','le');
+    // Clear sensitive session data
+    sessionStorage.removeItem('_enc_session');
+    ttSessionToken=null;
+    ttTokenIssuedAt=0;
+    _cryptoKey=null;
+    _encInitialized=false;
+    // Show password modal again
+    if(localStorage.getItem(MASTER_CHECK_KEY)){
+      showPasswordModal('unlock');
+    }
+    _lastActivity=Date.now(); // Reset to prevent repeated logouts
+  }
+},30*1000); // Check every 30 seconds
+
+// TastyTrade: auto-refresh access_token every 10 minutes (token expires at 15min)
+setInterval(async()=>{
+  if(activeBroker==='tastytrade'&&ttSessionToken){
+    const ageMs=Date.now()-ttTokenIssuedAt;
+    if(ageMs>10*60*1000){
+      try{
+        await ttEnsureValidToken();
+        addLog('🔄 TastyTrade: token רוענן אוטומטית','li');
+      }catch(_){}
+    }
+  }
+},5*60*1000); // Check every 5 minutes
+
 // Update version badge dynamically
 const verBadge=document.getElementById('version-badge');
 if(verBadge) verBadge.textContent=APP_VERSION+' · '+APP_DATE;
+
+// Auto-refresh TastyTrade token every 12 minutes (before 15min expiry)
+setInterval(async()=>{
+  if(activeBroker==='tastytrade'&&ttSessionToken){
+    try{
+      ttTokenIssuedAt=0; // Force refresh
+      await ttEnsureValidToken();
+      console.log('[Auto] TT token refreshed at',new Date().toLocaleTimeString());
+    }catch(e){console.warn('[Auto] TT refresh failed:',e);}
+  }
+}, 12*60*1000); // 12 minutes
 
 // STABILITY: Save state when tab loses focus or page unloads
 window.addEventListener('visibilitychange',()=>{
@@ -3864,8 +3949,14 @@ window.addEventListener('beforeunload',()=>{
     }
   }catch(_){}
 });
-// Show encryption password modal if data is encrypted
-if(localStorage.getItem(MASTER_CHECK_KEY)){
+// Try auto-unlock from sessionStorage (cleared when browser closes)
+const sessPw=sessionStorage.getItem('_enc_session');
+if(sessPw&&localStorage.getItem(MASTER_CHECK_KEY)){
+  initEncryption(sessPw).then(ok=>{
+    if(ok){_encInitialized=true;restoreDecryptedFields();addLog('🔐 הצפנה פעילה (session)','lo');}
+    else{sessionStorage.removeItem('_enc_session');showPasswordModal('unlock');}
+  });
+} else if(localStorage.getItem(MASTER_CHECK_KEY)){
   showPasswordModal('unlock');
 } else if(localStorage.getItem('tradier_token')||localStorage.getItem('tt_client_id')){
   // Unencrypted data exists — prompt to set encryption password
