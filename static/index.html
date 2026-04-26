@@ -220,7 +220,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.5;">
         OAuth: <a href="https://developer.tastytrade.com/sandbox/" target="_blank" style="color:var(--accent);">צור אפליקציה</a> → Manage → Create Grant
       </div>
-      <div><label>Client ID</label><input type="text" id="tt-client-id" placeholder="client id (מה-OAuth app)"/></div>
+      <div><label>Client ID</label><input type="password" id="tt-client-id" placeholder="client id (מה-OAuth app)"/></div>
       <div><label>Client Secret</label><input type="password" id="tt-client-secret" placeholder="client secret"/></div>
       <div><label>Refresh Token</label><input type="password" id="tt-refresh-token" placeholder="refresh token (מ-Create Grant)"/></div>
       <div id="tt-accounts-row" style="display:none;">
@@ -869,6 +869,66 @@ async function restoreDecryptedFields(){
   if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
 }
 
+// ── ADMIN TOKEN — protects all server endpoints ──────────────────────────────
+let _adminToken = sessionStorage.getItem('_admin_token') || '';
+
+async function setAdminToken(token){
+  _adminToken = token;
+  sessionStorage.setItem('_admin_token', token);
+}
+
+async function ensureAdminToken(){
+  if(_adminToken) return _adminToken;
+  // Check if admin is set on server
+  try{
+    const r = await fetch('/api/admin/status');
+    if(!r.ok){return null;} // Endpoint may not exist on older servers
+    const ct = r.headers.get('content-type')||'';
+    if(!ct.includes('application/json')) return null;
+    const d = await r.json();
+    if(d.isSet){
+      // Prompt for token
+      const tok = prompt('🔐 הזן Admin Token לגישה לשרת:');
+      if(tok){
+        // Verify
+        const v = await fetch('/api/admin/verify', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({token: tok})
+        });
+        if(!v.ok) return null;
+        const vct = v.headers.get('content-type')||'';
+        if(!vct.includes('application/json')) return null;
+        const vd = await v.json();
+        if(vd.valid){
+          setAdminToken(tok);
+          addLog('✓ Admin token verified','lo');
+          return tok;
+        } else {
+          alert('Token לא תקין');
+          return null;
+        }
+      }
+    } else {
+      // First-time setup
+      const tok = prompt('🔐 הגדר Admin Token חדש (8+ תווים):\nיגן על כל הנתונים בשרת');
+      if(tok && tok.length >= 8){
+        const r2 = await fetch('/api/admin/setup', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({token: tok})
+        });
+        if(r2.ok){
+          setAdminToken(tok);
+          addLog('✓ Admin token נשמר','lo');
+          return tok;
+        }
+      }
+    }
+  }catch(e){console.error(e);}
+  return null;
+}
+
 // ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
 // When running via FastAPI server, sync to server instead of localStorage only
 // IS_SERVER: true when running via Python server (Railway or local)
@@ -879,15 +939,45 @@ const IS_SERVER = !window.location.href.startsWith('file://') &&
 async function apiGet(endpoint, fallback=null){
   if(!IS_SERVER) return fallback;
   try{
-    const r = await fetch('/api/'+endpoint);
+    const headers = {};
+    if(_adminToken) headers['Authorization'] = 'Bearer ' + _adminToken;
+    const r = await fetch('/api/'+endpoint, {headers});
+    if(r.status === 401 || r.status === 403){
+      await ensureAdminToken();
+      if(_adminToken){
+        const r2 = await fetch('/api/'+endpoint, {headers: {'Authorization':'Bearer '+_adminToken}});
+        if(r2.ok) return await r2.json();
+      }
+      return fallback;
+    }
     if(!r.ok) return fallback;
+    const ct = r.headers.get('content-type')||'';
+    if(!ct.includes('application/json')) return fallback;
     return await r.json();
   }catch(_){ return fallback; }
 }
 
 async function apiPost(endpoint, data){
-  // Server sync disabled for security - data stays local
-  return;
+  if(!IS_SERVER) return;
+  try{
+    const headers = {'Content-Type': 'application/json'};
+    if(_adminToken) headers['Authorization'] = 'Bearer ' + _adminToken;
+    const r = await fetch('/api/'+endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    });
+    if(r.status === 401 || r.status === 403){
+      await ensureAdminToken();
+      if(_adminToken){
+        await fetch('/api/'+endpoint, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
+          body: JSON.stringify(data)
+        });
+      }
+    }
+  }catch(_){}
 }
 
 // ── DATA LAYER: Server is source of truth ────────────────────────────────────
@@ -1739,42 +1829,19 @@ async function submitOrders(){
     const tradeEntry={id:orderId,ticker:t,side,qty,type,price:entryPrice,status:'pending',ts:new Date().toISOString(),stopId:null,stopPrice:null,pnl:null,orderId};
     addTradeEntry(tradeEntry);
 
-    // 3. For BUY orders — poll for fill then send stop
-    if(side==='buy'&&scanResult?.atr!=null){
-      const stopPrice=+(entryPrice-scanResult.atr*mult).toFixed(2);
-      res.innerHTML+=`<div style="color:var(--muted);font-size:11px;">  ↳ ממתין לאישור מילוי... ואז שולח Stop @ $${stopPrice}</div>`;
-      
-      // Poll in background
+    // 3. For BUY — poll for fill (no auto-stop, user adds manually via "+ סטופ")
+    if(side==='buy'){
       (async()=>{
         try{
           const filledOrder=await pollOrderStatus(orderId,90000);
           const fillPrice=parseFloat(filledOrder.avg_fill_price||entryPrice)||entryPrice;
-          res.innerHTML+=`<div style="color:var(--green);font-size:11px;">  ↳ ✓ מולא @ $${fillPrice}</div>`;
-          
-          // Auto stop disabled — use "+ סטופ" button in trade log
-          
-          // Update trade log entry
+          res.innerHTML+=`<div style="color:var(--green);font-size:11px;">  ↳ ✓ מולא @ $${fillPrice} — לחץ "+ סטופ" בPositions להוספת סטופ</div>`;
           const log=getTradeLog();
-          const idx=log.findIndex(e=>e.orderId===orderId);
-          if(idx>=0){log[idx].status='open';log[idx].fillPrice=fillPrice;log[idx].stopId=stopId;log[idx].stopPrice=stopPrice;}
-          // Add stop order as separate SELL row in log (linked to buy via orderId)
-          const stopEntry={
-            id:'stop_'+stopId, orderId:String(stopId),
-            ticker:t, side:'sell', qty, type:'stop',
-            price:stopPrice, fillPrice:null,
-            status:'pending', ts:new Date().toISOString(),
-            stopId:null, stopPrice:null, pnl:null,
-            linkedBuyOrderId:String(orderId), source:'stop'
-          };
-          log.unshift(stopEntry);
+          const idx=log.findIndex(e=>String(e.orderId)===String(orderId));
+          if(idx>=0){log[idx].status='open';log[idx].fillPrice=fillPrice;}
           saveTradeLog(log);updateTradeLogBadge();
         }catch(e){
-          res.innerHTML+=`<div style="color:var(--red);font-size:11px;">  ↳ ✗ ${e.message}</div>`;
-          addLog('✗ '+t+' poll/stop error: '+e.message,'le');
-          const log=getTradeLog();
-          const idx=log.findIndex(e=>e.orderId===orderId);
-          if(idx>=0){log[idx].status='stop_failed';log[idx].error=e.message;}
-          saveTradeLog(log);
+          addLog('✗ '+t+' fill poll: '+e.message,'le');
         }
       })();
     }else if(side==='sell'){
@@ -2866,12 +2933,15 @@ function renderTradeLog(){
     </div>`;
 
   // ── Orders table ──────────────────────────────────────────────────────────
-  // Orders: show active stops (not filled/canceled/closed) + recent filled for reference
+  // Orders: only PENDING stops for current broker+env
+  const _curBroker=activeBroker||'tradier';
+  const _curEnv=_curBroker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
   const orders_log=log.filter(e=>
     e.side==='sell'&&
-    e.status!=='canceled'&&
-    e.status!=='filled'&&
-    e.status!=='closed'
+    e.source==='stop'&&
+    e.status==='pending'&&
+    (e.broker||'tradier')===_curBroker&&
+    (e.env||'live')===_curEnv
   );
   // ── Closed Positions ──────────────────────────────────────────────────────
   // Filter closed by current broker+env
@@ -3949,6 +4019,11 @@ window.addEventListener('beforeunload',()=>{
     }
   }catch(_){}
 });
+// Check admin token first (before loading server data)
+ensureAdminToken().then(()=>{
+  if(typeof loadFromServer === 'function') loadFromServer();
+});
+
 // Try auto-unlock from sessionStorage (cleared when browser closes)
 const sessPw=sessionStorage.getItem('_enc_session');
 if(sessPw&&localStorage.getItem(MASTER_CHECK_KEY)){
