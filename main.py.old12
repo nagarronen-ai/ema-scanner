@@ -66,9 +66,12 @@ async def setup_user(request: Request):
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer ") or not db.verify_admin_token(auth[7:]):
             raise HTTPException(status_code=403, detail="Admin token required to change user")
-    # Save user (no 2FA for now)
-    db.set_user(username, password, None)
-    return {"ok": True}
+    # Generate TOTP secret
+    totp_secret = pyotp.random_base32()
+    db.set_user(username, password, totp_secret)
+    # Return provisioning URI for QR code
+    uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="EMA Scanner")
+    return {"ok": True, "totp_uri": uri, "totp_secret": totp_secret}
 
 @app.get("/api/auth/status")
 def auth_status():
@@ -80,13 +83,17 @@ async def auth_login(request: Request):
     username = body.get("username", "").strip()
     password = body.get("password", "")
     if not db.is_user_set():
-        raise HTTPException(status_code=400, detail="System not initialized")
+        raise HTTPException(status_code=400, detail="System not initialized — contact admin")
     if not db.verify_user_password(username, password):
         raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
-    # Issue session token (no 2FA for now)
+    user = db.get_user()
+    if user.get("totp_secret"):
+        return {"requires2FA": True}
+    # No 2FA — issue session token directly
     token = secrets.token_urlsafe(32)
+    # Store as admin token
     db.set_admin_token(token)
-    return {"token": token}
+    return {"token": token, "requires2FA": False}
 
 @app.post("/api/auth/verify_2fa")
 async def auth_verify_2fa(request: Request):

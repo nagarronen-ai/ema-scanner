@@ -889,16 +889,16 @@ function showLoginScreen(){
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:32px;margin-bottom:8px;">🔒</div>
           <div style="font-size:18px;font-weight:500;color:#fff;">EMA Scanner</div>
-          <div style="font-size:12px;color:#888;margin-top:4px;">הזן פרטי כניסה</div>
+          <div style="font-size:12px;color:#888;margin-top:4px;">דרושה אימות לכניסה</div>
         </div>
         <div id="login-step-1">
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">שם משתמש</label>
           <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
           <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">כניסה</button>
+          <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">המשך לאימות 2FA</button>
         </div>
-        <div id="login-step-2" style="display:none !important;">
+        <div id="login-step-2" style="display:none;">
           <div style="font-size:13px;color:#fff;margin-bottom:12px;">📱 הזן קוד 2FA מהאפליקציה:</div>
           <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <button onclick="doLoginStep2()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">אמת והיכנס</button>
@@ -925,6 +925,8 @@ async function doLoginStep1(){
   const pw = document.getElementById('login-password').value;
   const errEl = document.getElementById('login-error');
   if(!user||!pw){errEl.textContent='הזן שם משתמש וסיסמה';return;}
+  
+  // Verify against server
   try{
     const r = await fetch('/api/auth/login', {
       method: 'POST',
@@ -940,11 +942,16 @@ async function doLoginStep1(){
       return;
     }
     const data = await r.json();
-    if(data.token){
+    if(data.requires2FA){
+      _loginCreds = {username: user, password: pw};
+      document.getElementById('login-step-1').style.display='none';
+      document.getElementById('login-step-2').style.display='block';
+      errEl.textContent='';
+      setTimeout(()=>document.getElementById('login-2fa')?.focus(),100);
+    } else if(data.token){
+      // Login complete without 2FA
       setAdminToken(data.token);
       hideLoginScreen();
-      addLog('✓ התחברות הצליחה','lo');
-      if(typeof loadFromServer==='function') loadFromServer();
     }
   }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
 }
