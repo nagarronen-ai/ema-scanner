@@ -116,7 +116,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
   </h1>
   <div style="display:flex;gap:8px;align-items:center;">
     <span style="font-size:12px;color:var(--muted)" id="last-scan-label"></span>
-    <button class="btn-secondary btn-sm" onclick="showSnapshotPicker()">📂 שחזר מ-Snapshot</button>
+    <button class="btn-secondary btn-sm" onclick="importFromFile()" title="ייבא נתונים מקובץ גיבוי">📂 ייבא נתונים</button>
     <button class="btn-secondary btn-sm" onclick="exportToServer()" id="sync-btn" title="ייצא/שמור נתונים">☁ גבה נתונים</button>
     <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
     <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
@@ -2408,99 +2408,6 @@ function applyPastedTickers(){
   document.getElementById('paste-modal').className='modal-overlay';
   addLog('✓ '+activeIdxName.toUpperCase()+' updated: '+tickers.length+' tickers','lo');
 }
-
-// Create a server snapshot
-async function createSnapshot(label='manual'){
-  if(!_adminToken){addLog('⚠ נדרשת התחברות','le');return;}
-  try{
-    const r=await fetch('/api/snapshots/create',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
-      body:JSON.stringify({label})
-    });
-    if(!r.ok)throw new Error('שמירת snapshot נכשלה');
-    const d=await r.json();
-    addLog('✓ Snapshot נשמר: '+d.ts.slice(0,16).replace('T',' '),'lo');
-    return d;
-  }catch(e){addLog('✗ '+e.message,'le');}
-}
-
-// Show snapshot picker for restore
-async function showSnapshotPicker(){
-  if(!_adminToken){addLog('⚠ נדרשת התחברות','le');return;}
-  try{
-    const r=await fetch('/api/snapshots',{headers:{'Authorization':'Bearer '+_adminToken}});
-    if(!r.ok)throw new Error('טעינת snapshots נכשלה');
-    const list=await r.json();
-    if(list.length===0){alert('אין snapshots זמינים. צור גיבוי קודם.');return;}
-    
-    let modal=document.getElementById('snapshot-modal');
-    if(!modal){
-      modal=document.createElement('div');
-      modal.id='snapshot-modal';
-      modal.className='modal-overlay';
-      document.body.appendChild(modal);
-    }
-    modal.innerHTML=`
-      <div class="modal-box" style="width:min(560px,92vw);max-height:80vh;overflow:auto;" dir="rtl">
-        <div class="modal-title" style="margin-bottom:8px;">📂 שחזור מ-Snapshot</div>
-        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">בחר נקודת שחזור (10 אחרונות נשמרות אוטומטית)</div>
-        <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px;">
-          ${list.slice().reverse().map(s=>{
-            const date=new Date(s.ts).toLocaleString('he-IL');
-            return`<button class="btn-secondary" style="text-align:right;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;" onclick="confirmRestore('${s.ts}','${date}')">
-              <div>
-                <div style="font-size:13px;font-weight:500;">${date}</div>
-                <div style="font-size:11px;color:var(--muted);">${s.label} · ${s.trades_count} עסקאות · ${s.closed_count} סגורות</div>
-              </div>
-              <span style="color:var(--accent);font-size:18px;">↶</span>
-            </button>`;
-          }).join('')}
-        </div>
-        <button class="btn-secondary" style="width:100%;" onclick="document.getElementById('snapshot-modal').className='modal-overlay'">ביטול</button>
-      </div>`;
-    modal.className='modal-overlay show';
-  }catch(e){addLog('✗ '+e.message,'le');alert(e.message);}
-}
-
-async function confirmRestore(ts,dateStr){
-  // Require login password confirmation
-  const pw=prompt('🔐 הזן את סיסמת ההתחברות לאישור שחזור:\n\n⚠️ הנתונים הנוכחיים יוחלפו ב-snapshot מ-'+dateStr);
-  if(!pw){addLog('שחזור בוטל','le');return;}
-  
-  // Verify password by attempting login
-  const username=document.getElementById('login-username')?.value||'ronen';
-  try{
-    const v=await fetch('/api/auth/login',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({username,password:pw})
-    });
-    if(!v.ok){alert('סיסמה שגויה — שחזור בוטל');addLog('✗ סיסמה שגויה — שחזור בוטל','le');return;}
-    
-    // Password OK — perform restore
-    const r=await fetch('/api/snapshots/restore',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
-      body:JSON.stringify({ts})
-    });
-    if(!r.ok)throw new Error('שחזור נכשל');
-    document.getElementById('snapshot-modal').className='modal-overlay';
-    addLog('✓ שוחזר מ-'+dateStr+' — מרענן...','lo');
-    setTimeout(()=>location.reload(),1000);
-  }catch(e){addLog('✗ '+e.message,'le');alert(e.message);}
-}
-
-// Auto-create daily snapshot
-async function ensureDailySnapshot(){
-  const lastDaily=localStorage.getItem('_last_daily_snapshot');
-  const today=new Date().toISOString().slice(0,10);
-  if(lastDaily!==today){
-    await createSnapshot('daily-'+today);
-    localStorage.setItem('_last_daily_snapshot',today);
-  }
-}
-setTimeout(ensureDailySnapshot,30000); // 30s after load
 
 async function exportToServer(){
   if(!IS_SERVER){

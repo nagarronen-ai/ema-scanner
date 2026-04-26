@@ -154,28 +154,6 @@ async def tt_proxy(path: str, request: Request):
         except Exception as e:
             raise HTTPException(status_code=502, detail=str(e))
 
-
-# ── Snapshots ─────────────────────────────────────────────────────────────────
-@app.post("/api/snapshots/create", dependencies=[Depends(verify_admin)])
-async def create_snapshot(request: Request):
-    body = await request.json() if await request.body() else {}
-    label = body.get("label", "manual")
-    ts = db.create_snapshot(label)
-    return {"ok": True, "ts": ts}
-
-@app.get("/api/snapshots", dependencies=[Depends(verify_admin)])
-def list_snapshots():
-    return db.list_snapshots()
-
-@app.post("/api/snapshots/restore", dependencies=[Depends(verify_admin)])
-async def restore_snapshot(request: Request):
-    body = await request.json()
-    ts = body.get("ts", "")
-    ok = db.restore_snapshot(ts)
-    if not ok:
-        raise HTTPException(status_code=404, detail="Snapshot not found")
-    return {"ok": True}
-
 # ── Earnings (Finnhub) ────────────────────────────────────────────────────────
 @app.get("/earnings-proxy/{symbol}")
 async def earnings_proxy(symbol: str):
