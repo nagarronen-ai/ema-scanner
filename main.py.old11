@@ -119,11 +119,11 @@ async def earnings_proxy(symbol: str):
     return {"earningsDate": None, "symbol": sym}
 
 # ── Journal ───────────────────────────────────────────────────────────────────
-@app.get("/api/journal/{broker}/{env}", dependencies=[Depends(verify_admin)])
+@app.get("/api/journal/{broker}/{env}")
 def get_journal(broker: str, env: str):
     return db.get_journal(broker, env)
 
-@app.post("/api/journal/{broker}/{env}", dependencies=[Depends(verify_admin)])
+@app.post("/api/journal/{broker}/{env}")
 async def save_journal(broker: str, env: str, request: Request):
     trades = await request.json()
     if isinstance(trades, list):
@@ -131,11 +131,11 @@ async def save_journal(broker: str, env: str, request: Request):
     return {"ok": True}
 
 # ── Closed trades ─────────────────────────────────────────────────────────────
-@app.get("/api/closed_trades", dependencies=[Depends(verify_admin)])
+@app.get("/api/closed_trades")
 def get_closed():
     return db.get_closed_trades()
 
-@app.post("/api/closed_trades", dependencies=[Depends(verify_admin)])
+@app.post("/api/closed_trades")
 async def save_closed(request: Request):
     trades = await request.json()
     if isinstance(trades, list):
@@ -143,11 +143,11 @@ async def save_closed(request: Request):
     return {"ok": True}
 
 # Legacy compat
-@app.get("/api/trades", dependencies=[Depends(verify_admin)])
+@app.get("/api/trades")
 def get_trades():
     return db.get_journal("tradier", "live")
 
-@app.post("/api/trades", dependencies=[Depends(verify_admin)])
+@app.post("/api/trades")
 async def save_trades(request: Request):
     trades = await request.json()
     if isinstance(trades, list):
@@ -155,31 +155,31 @@ async def save_trades(request: Request):
     return {"ok": True}
 
 # ── Settings, Lists, Cache ────────────────────────────────────────────────────
-@app.get("/api/settings", dependencies=[Depends(verify_admin)])
+@app.get("/api/settings")
 def get_settings(): return db.get_settings()
 
-@app.post("/api/settings", dependencies=[Depends(verify_admin)])
+@app.post("/api/settings")
 async def save_settings(request: Request):
     db.save_settings(await request.json()); return {"ok": True}
 
-@app.get("/api/lists", dependencies=[Depends(verify_admin)])
+@app.get("/api/lists")
 def get_lists(): return db.get_lists()
 
-@app.post("/api/lists", dependencies=[Depends(verify_admin)])
+@app.post("/api/lists")
 async def save_lists(request: Request):
     db.save_lists(await request.json()); return {"ok": True}
 
-@app.get("/api/cache/bars", dependencies=[Depends(verify_admin)])
+@app.get("/api/cache/bars")
 def get_bars():  return db.get_bars_cache()
 
-@app.post("/api/cache/bars", dependencies=[Depends(verify_admin)])
+@app.post("/api/cache/bars")
 async def save_bars(request: Request):
     db.save_bars_cache(await request.json()); return {"ok": True}
 
-@app.get("/api/cache/results", dependencies=[Depends(verify_admin)])
+@app.get("/api/cache/results")
 def get_results(): return db.get_results_cache()
 
-@app.post("/api/cache/results", dependencies=[Depends(verify_admin)])
+@app.post("/api/cache/results")
 async def save_results(request: Request):
     db.save_results_cache(await request.json()); return {"ok": True}
 
