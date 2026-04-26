@@ -794,12 +794,8 @@ async function secureSet(rawKey,value){
 async function secureGet(rawKey){
   const stored=localStorage.getItem(rawKey);
   if(!stored) return null;
-  // If value is encrypted but key not ready → return null (don't leak ciphertext)
-  if(stored.startsWith('enc:')){
-    if(!_cryptoKey) return null;
-    return decryptValue(_cryptoKey,stored);
-  }
-  return stored; // plaintext value
+  if(!_cryptoKey||!stored.startsWith('enc:')) return stored;
+  return decryptValue(_cryptoKey,stored);
 }
 
 // Password modal state
@@ -871,196 +867,6 @@ async function restoreDecryptedFields(){
   if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
   const rt=await secureGet('tt_refresh_token');
   if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
-}
-
-// ── LOGIN GATE — username + password + 2FA before ANY UI access ─────────────
-// Locks UI until full authentication succeeds
-let _loginComplete = false;
-
-function showLoginScreen(){
-  // Hide entire UI behind a full-page lock
-  let overlay = document.getElementById('login-overlay');
-  if(!overlay){
-    overlay = document.createElement('div');
-    overlay.id = 'login-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0a0a0a;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);';
-    overlay.innerHTML = `
-      <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;width:380px;max-width:92vw;" dir="rtl">
-        <div style="text-align:center;margin-bottom:24px;">
-          <div style="font-size:32px;margin-bottom:8px;">🔒</div>
-          <div style="font-size:18px;font-weight:500;color:#fff;">EMA Scanner</div>
-          <div style="font-size:12px;color:#888;margin-top:4px;">דרושה אימות לכניסה</div>
-        </div>
-        <div id="login-step-1">
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">שם משתמש</label>
-          <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
-          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">המשך לאימות 2FA</button>
-        </div>
-        <div id="login-step-2" style="display:none;">
-          <div style="font-size:13px;color:#fff;margin-bottom:12px;">📱 הזן קוד 2FA מהאפליקציה:</div>
-          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <button onclick="doLoginStep2()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">אמת והיכנס</button>
-          <button onclick="cancelLogin()" style="width:100%;padding:8px;background:transparent;color:#888;border:none;font-size:11px;margin-top:8px;cursor:pointer;">ביטול</button>
-        </div>
-        <div id="login-error" style="font-size:12px;color:#ef4444;margin-top:12px;text-align:center;min-height:16px;"></div>
-      </div>`;
-    document.body.appendChild(overlay);
-  }
-  overlay.style.display = 'flex';
-  setTimeout(()=>document.getElementById('login-username')?.focus(),100);
-}
-
-function hideLoginScreen(){
-  const ov = document.getElementById('login-overlay');
-  if(ov) ov.style.display = 'none';
-  _loginComplete = true;
-}
-
-let _loginCreds = null;
-
-async function doLoginStep1(){
-  const user = document.getElementById('login-username').value.trim();
-  const pw = document.getElementById('login-password').value;
-  const errEl = document.getElementById('login-error');
-  if(!user||!pw){errEl.textContent='הזן שם משתמש וסיסמה';return;}
-  
-  // Verify against server
-  try{
-    const r = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({username: user, password: pw})
-    });
-    if(!r.ok){
-      const ct = r.headers.get('content-type')||'';
-      if(ct.includes('application/json')){
-        const d = await r.json();
-        errEl.textContent = d.detail||'אימות נכשל';
-      } else errEl.textContent='אימות נכשל';
-      return;
-    }
-    const data = await r.json();
-    if(data.requires2FA){
-      _loginCreds = {username: user, password: pw};
-      document.getElementById('login-step-1').style.display='none';
-      document.getElementById('login-step-2').style.display='block';
-      errEl.textContent='';
-      setTimeout(()=>document.getElementById('login-2fa')?.focus(),100);
-    } else if(data.token){
-      // Login complete without 2FA
-      setAdminToken(data.token);
-      hideLoginScreen();
-    }
-  }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
-}
-
-async function doLoginStep2(){
-  const code = document.getElementById('login-2fa').value.trim();
-  const errEl = document.getElementById('login-error');
-  if(code.length!==6){errEl.textContent='קוד חייב להיות 6 ספרות';return;}
-  try{
-    const r = await fetch('/api/auth/verify_2fa', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({..._loginCreds, code: code})
-    });
-    if(!r.ok){
-      const ct = r.headers.get('content-type')||'';
-      if(ct.includes('application/json')){
-        const d = await r.json();
-        errEl.textContent = d.detail||'קוד שגוי';
-      } else errEl.textContent='קוד שגוי';
-      return;
-    }
-    const data = await r.json();
-    setAdminToken(data.token);
-    _loginCreds = null;
-    hideLoginScreen();
-    addLog('✓ התחברות הצליחה','lo');
-    if(typeof loadFromServer==='function') loadFromServer();
-  }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
-}
-
-function cancelLogin(){
-  // CRITICAL: Cancel must keep UI locked
-  document.getElementById('login-step-2').style.display='none';
-  document.getElementById('login-step-1').style.display='block';
-  document.getElementById('login-error').textContent='התחברות בוטלה';
-  document.getElementById('login-username').value='';
-  document.getElementById('login-password').value='';
-  document.getElementById('login-2fa').value='';
-  _loginCreds = null;
-}
-
-// Restore password confirmation
-async function confirmRestorePassword(){
-  return new Promise((resolve)=>{
-    let modal = document.getElementById('restore-confirm-modal');
-    if(!modal){
-      modal = document.createElement('div');
-      modal.id = 'restore-confirm-modal';
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-        <div class="modal-box" style="width:min(420px,92vw);" dir="rtl">
-          <div class="modal-title" style="margin-bottom:8px;">⚠️ אימות שחזור נתונים</div>
-          <div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.6;">
-            פעולת השחזור תדרוס את הנתונים הקיימים.<br/>
-            <strong>הזן את סיסמת ההצפנה שלך לאישור:</strong>
-          </div>
-          <input type="password" id="restore-pw" placeholder="סיסמה" autocomplete="off"
-            style="width:100%;padding:10px;font-size:14px;margin-bottom:14px;"
-            onkeydown="if(event.key==='Enter')document.getElementById('restore-pw-ok').click()"/>
-          <div style="display:flex;gap:8px;">
-            <button id="restore-pw-ok" class="btn-primary" style="flex:1;">אשר שחזור</button>
-            <button id="restore-pw-cancel" class="btn-secondary" style="flex:1;">ביטול</button>
-          </div>
-          <div id="restore-pw-error" style="font-size:11px;color:var(--red);margin-top:8px;min-height:14px;"></div>
-        </div>`;
-      document.body.appendChild(modal);
-    }
-    document.getElementById('restore-pw').value='';
-    document.getElementById('restore-pw-error').textContent='';
-    modal.className = 'modal-overlay show';
-    setTimeout(()=>document.getElementById('restore-pw').focus(),100);
-    
-    document.getElementById('restore-pw-ok').onclick = async()=>{
-      const pw = document.getElementById('restore-pw').value;
-      if(!pw){
-        document.getElementById('restore-pw-error').textContent='הזן סיסמה';
-        return;
-      }
-      // Verify password matches encryption
-      try{
-        const ok = await initEncryption(pw);
-        if(ok){
-          modal.className = 'modal-overlay';
-          resolve(pw);
-        } else {
-          document.getElementById('restore-pw-error').textContent='סיסמה שגויה';
-        }
-      }catch(e){
-        document.getElementById('restore-pw-error').textContent='שגיאה: '+e.message;
-      }
-    };
-    document.getElementById('restore-pw-cancel').onclick = ()=>{
-      // CRITICAL: Cancel blocks the restore action — user stays where they were
-      modal.className = 'modal-overlay';
-      addLog('שחזור בוטל — אימות נדחה','le');
-      resolve(null);
-    };
-  });
-}
-
-function logout(){
-  _loginComplete = false;
-  _adminToken = '';
-  sessionStorage.removeItem('_admin_token');
-  sessionStorage.removeItem('_enc_session');
-  _cryptoKey = null;
-  _encInitialized = false;
-  showLoginScreen();
 }
 
 // ── ADMIN TOKEN — protects all server endpoints ──────────────────────────────
@@ -1383,10 +1189,9 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.5';
-const APP_DATE='26.04.2026';
+const APP_VERSION='v3.4';
+const APP_DATE='25.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.5', date:'26.04.2026', notes:'אבטחה: login + 2FA חובה, restore דורש סיסמה, cancel חוסם גישה, security guards מקיפים'},
   {v:'v3.4', date:'25.04.2026', notes:'Stability: persistence audit, journal switching robustness, save guards on context change, server-encrypted credentials, admin token, TT positions fix'},
   {v:'v3.3', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
   {v:'v2.7', date:'08.04.2025', notes:'P-Entry: מרחק מקס מ-EMA21, lookback, פילטר P-Entry, תיקון לוגיקה'},
@@ -2464,10 +2269,7 @@ async function exportToServer(){
 }
 
 // Load backup JSON file into localStorage (for migration from HTML to server)
-async function importFromFile(){
-  // Require password confirmation for restore
-  const pw = await confirmRestorePassword();
-  if(!pw){addLog('שחזור בוטל','le');return;}
+function importFromFile(){
   const input=document.createElement('input');
   input.type='file';input.accept='.json';
   input.onchange=async(ev)=>{
@@ -3711,17 +3513,12 @@ function exportTradeLog(){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (async()=>{try{
-  // Restore env preference (not encrypted)
+  const tok=await secureGet(tradierTokenKey());
+  const acc=await secureGet(tradierAcctKey());
   const env=localStorage.getItem('tradier_env');
+  if(tok)document.getElementById('api-token').value=tok;
+  if(acc)document.getElementById('account-id').value=acc;
   if(env)setEnv(env);
-  // Restore credentials ONLY if encryption is ready
-  // (otherwise secureGet returns null and we don't leak ciphertext)
-  if(_encInitialized){
-    const tok=await secureGet(tradierTokenKey());
-    const acc=await secureGet(tradierAcctKey());
-    if(tok)document.getElementById('api-token').value=tok;
-    if(acc)document.getElementById('account-id').value=acc;
-  }
   const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
   if(c&&Date.now()-c.ts<86400000){results=c.data;updateStats();renderTable();document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');addLog('תוצאות נטענו מטמון','lo');lastAppliedParams=getCurrentParams();}
 }catch(_){}})();
@@ -4222,27 +4019,10 @@ window.addEventListener('beforeunload',()=>{
     }
   }catch(_){}
 });
-// SECURITY: Show login screen if not authenticated
-const savedToken = sessionStorage.getItem('_admin_token');
-if(savedToken){
-  // Verify token is still valid
-  fetch('/api/admin/verify', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({token: savedToken})
-  }).then(r=>r.ok?r.json():null).then(d=>{
-    if(d&&d.valid){
-      _adminToken = savedToken;
-      _loginComplete = true;
-      if(typeof loadFromServer === 'function') loadFromServer();
-    } else {
-      sessionStorage.removeItem('_admin_token');
-      showLoginScreen();
-    }
-  }).catch(()=>showLoginScreen());
-} else {
-  showLoginScreen();
-}
+// Check admin token first (before loading server data)
+ensureAdminToken().then(()=>{
+  if(typeof loadFromServer === 'function') loadFromServer();
+});
 
 // Try auto-unlock from sessionStorage (cleared when browser closes)
 const sessPw=sessionStorage.getItem('_enc_session');

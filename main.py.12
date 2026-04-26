@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, os, uvicorn, secrets
+import httpx, os, uvicorn
 from datetime import datetime
 from database import Database
 
@@ -49,74 +49,6 @@ async def verify_admin_endpoint(request: Request):
 @app.get("/api/admin/status")
 def admin_status():
     return {"isSet": db.is_admin_set()}
-
-# ── User Login + 2FA ──────────────────────────────────────────────────────────
-import pyotp
-
-@app.post("/api/auth/setup_user")
-async def setup_user(request: Request):
-    """First-time user creation. Once set, requires admin token."""
-    body = await request.json()
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    if not username or len(password) < 8:
-        raise HTTPException(status_code=400, detail="Username + password (8+ chars) required")
-    if db.is_user_set():
-        # Require admin auth
-        auth = request.headers.get("authorization", "")
-        if not auth.startswith("Bearer ") or not db.verify_admin_token(auth[7:]):
-            raise HTTPException(status_code=403, detail="Admin token required to change user")
-    # Generate TOTP secret
-    totp_secret = pyotp.random_base32()
-    db.set_user(username, password, totp_secret)
-    # Return provisioning URI for QR code
-    uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="EMA Scanner")
-    return {"ok": True, "totp_uri": uri, "totp_secret": totp_secret}
-
-@app.get("/api/auth/status")
-def auth_status():
-    return {"userSet": db.is_user_set(), "adminSet": db.is_admin_set()}
-
-@app.post("/api/auth/login")
-async def auth_login(request: Request):
-    body = await request.json()
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    if not db.is_user_set():
-        raise HTTPException(status_code=400, detail="System not initialized — contact admin")
-    if not db.verify_user_password(username, password):
-        raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
-    user = db.get_user()
-    if user.get("totp_secret"):
-        return {"requires2FA": True}
-    # No 2FA — issue session token directly
-    token = secrets.token_urlsafe(32)
-    # Store as admin token
-    db.set_admin_token(token)
-    return {"token": token, "requires2FA": False}
-
-@app.post("/api/auth/verify_2fa")
-async def auth_verify_2fa(request: Request):
-    body = await request.json()
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    code = body.get("code", "").strip()
-    if not db.verify_user_password(username, password):
-        raise HTTPException(status_code=401, detail="פרטי התחברות שגויים")
-    user = db.get_user()
-    secret = user.get("totp_secret")
-    if not secret:
-        raise HTTPException(status_code=400, detail="2FA not configured")
-    totp = pyotp.TOTP(secret)
-    if not totp.verify(code, valid_window=1):
-        raise HTTPException(status_code=401, detail="קוד 2FA שגוי")
-    # Issue session token
-    token = secrets.token_urlsafe(32)
-    db.set_admin_token(token)
-    return {"token": token}
-
-import secrets
-
 
 # ── Encrypted Credentials ─────────────────────────────────────────────────────
 @app.get("/api/credentials", dependencies=[Depends(verify_admin)])
@@ -254,7 +186,7 @@ async def save_results(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.5",
+    return {"status": "ok", "version": "v3.4",
             "secure_storage": True, "admin_set": db.is_admin_set()}
 
 # ── Static ────────────────────────────────────────────────────────────────────
