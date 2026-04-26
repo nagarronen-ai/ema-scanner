@@ -794,8 +794,12 @@ async function secureSet(rawKey,value){
 async function secureGet(rawKey){
   const stored=localStorage.getItem(rawKey);
   if(!stored) return null;
-  if(!_cryptoKey||!stored.startsWith('enc:')) return stored;
-  return decryptValue(_cryptoKey,stored);
+  // If value is encrypted but key not ready → return null (don't leak ciphertext)
+  if(stored.startsWith('enc:')){
+    if(!_cryptoKey) return null;
+    return decryptValue(_cryptoKey,stored);
+  }
+  return stored; // plaintext value
 }
 
 // Password modal state
@@ -3513,12 +3517,17 @@ function exportTradeLog(){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 (async()=>{try{
-  const tok=await secureGet(tradierTokenKey());
-  const acc=await secureGet(tradierAcctKey());
+  // Restore env preference (not encrypted)
   const env=localStorage.getItem('tradier_env');
-  if(tok)document.getElementById('api-token').value=tok;
-  if(acc)document.getElementById('account-id').value=acc;
   if(env)setEnv(env);
+  // Restore credentials ONLY if encryption is ready
+  // (otherwise secureGet returns null and we don't leak ciphertext)
+  if(_encInitialized){
+    const tok=await secureGet(tradierTokenKey());
+    const acc=await secureGet(tradierAcctKey());
+    if(tok)document.getElementById('api-token').value=tok;
+    if(acc)document.getElementById('account-id').value=acc;
+  }
   const c=JSON.parse(localStorage.getItem(resultsCacheKey())||'null');
   if(c&&Date.now()-c.ts<86400000){results=c.data;updateStats();renderTable();document.getElementById('last-scan-label').textContent='מטמון: '+new Date(c.ts).toLocaleDateString('he-IL');addLog('תוצאות נטענו מטמון','lo');lastAppliedParams=getCurrentParams();}
 }catch(_){}})();
