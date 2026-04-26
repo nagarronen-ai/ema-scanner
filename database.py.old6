@@ -37,7 +37,6 @@ def _decrypt(stored: str) -> str:
 VALID_BROKERS = {'tradier', 'tt'}
 VALID_ENVS    = {'live', 'sandbox'}
 SENSITIVE_KEYS = {'credentials', 'tt_credentials', 'tradier_credentials',
-                  'tradier_sandbox',
                   'finnhub_key', 'admin_token_hash', 'auth_user'}
 
 class Database:

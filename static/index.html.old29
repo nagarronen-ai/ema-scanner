@@ -117,7 +117,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
   <div style="display:flex;gap:8px;align-items:center;">
     <span style="font-size:12px;color:var(--muted)" id="last-scan-label"></span>
     <button class="btn-secondary btn-sm" onclick="showSnapshotPicker()">📂 שחזר מ-Snapshot</button>
-    <button class="btn-secondary btn-sm" onclick="createSnapshot('manual')" id="sync-btn" title="צור snapshot על השרת">☁ גבה לשרת</button>
+    <button class="btn-secondary btn-sm" onclick="exportToServer()" id="sync-btn" title="ייצא/שמור נתונים">☁ גבה נתונים</button>
     <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
     <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
     <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
@@ -1326,21 +1326,18 @@ function saveLists(lists){
 
 // Server sync disabled for security
 async function loadFromServer(){
-  if(!_adminToken){console.warn('loadFromServer: no admin token');return;}
+  return; // Data stays in localStorage only
   try{
-    // Load journal for current broker+env
-    const journalKey = currentJournalKey();
-    const journalPath = getJournalApiPath();
-    const trades = await apiGet(journalPath, null);
+    // Load trades into memory cache
+    const trades = await apiGet('trades', null);
     if(trades && Array.isArray(trades)){
       _tradesCache = trades;
-      _tradesCacheKey = journalKey;
-      localStorage.setItem(journalKey, JSON.stringify(trades));
-      console.log('✓ Loaded', trades.length, 'trades from server ('+journalKey+')');
+      localStorage.setItem('trade_log', JSON.stringify(trades));
+      console.log('✓ Loaded', trades.length, 'trades from server');
     }
     // Load permanent closed trades
     const closedPerm = await apiGet('closed_trades', null);
-    if(closedPerm && Array.isArray(closedPerm)){
+    if(closedPerm && Array.isArray(closedPerm) && closedPerm.length > 0){
       localStorage.setItem(CLOSED_KEY, JSON.stringify(closedPerm));
       console.log('✓ Loaded', closedPerm.length, 'permanent closed trades');
     }
@@ -1383,42 +1380,7 @@ async function loadFromServer(){
     }
     addLog('✅ נטענו נתונים מהשרת: '+(_tradesCache.length)+' עסקאות, '+(Object.keys(_listsCache).length)+' רשימות','lo');
     // Re-render list buttons after server load
-    // Load Finnhub key from server
-    try{
-      const fh=await fetch('/api/finnhub_key',{headers:{'Authorization':'Bearer '+_adminToken}});
-      if(fh.ok){
-        const d=await fh.json();
-        if(d.key&&d.key.trim()){
-          FINNHUB_KEY=d.key;
-          await secureSet('finnhub_key',d.key);
-          const el=document.getElementById('finnhub-key');
-          if(el)el.value=d.key;
-          console.log('✓ Finnhub key loaded from server');
-        }
-      }
-    }catch(_){}
-    // Load Tradier Sandbox creds from server (Live stays local)
-    try{
-      const ts=await fetch('/api/tradier_sandbox',{headers:{'Authorization':'Bearer '+_adminToken}});
-      if(ts.ok){
-        const d=await ts.json();
-        if(d.token){
-          await secureSet('tradier_token_sandbox',d.token);
-          await secureSet('tradier_account_sandbox',d.account||'');
-          // If currently in sandbox env, populate fields
-          if((tradierEnv||'sandbox')==='sandbox'){
-            const tEl=document.getElementById('api-token');
-            const aEl=document.getElementById('account-id');
-            if(tEl)tEl.value=d.token;
-            if(aEl)aEl.value=d.account||'';
-          }
-          console.log('✓ Tradier Sandbox creds loaded from server');
-        }
-      }
-    }catch(_){}
     if(typeof renderListBtns==='function') renderListBtns();
-    if(typeof renderTradeLog==='function') renderTradeLog();
-    if(typeof updateTradeLogBadge==='function') updateTradeLogBadge();
   }catch(e){ 
     console.warn('Server load failed:', e);
     addLog('⚠ טעינה מהשרת נכשלה — משתמש בנתונים מקומיים','le');
@@ -1836,38 +1798,14 @@ async function saveFinnhubKey(val){
   if(!val) return;
   FINNHUB_KEY=val.trim();
   await secureSet('finnhub_key',FINNHUB_KEY);
-  // Sync to server (encrypted at rest)
-  if(_adminToken){
-    try{
-      await fetch('/api/finnhub_key',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
-        body:JSON.stringify({key:FINNHUB_KEY})
-      });
-      addLog('✓ Finnhub key נשמר (מוצפן + שרת)','lo');
-    }catch(_){addLog('✓ Finnhub key נשמר (מוצפן)','lo');}
-  } else {
-    addLog('✓ Finnhub key נשמר (מוצפן)','lo');
-  }
+  addLog('✓ Finnhub key נשמר (מוצפן)','lo');
 }
 
 async function saveConfig(){
   if(!_encInitialized){showPasswordModal('unlock',()=>saveConfig());return;}
   await secureSet(tradierTokenKey(),TOKEN());
   await secureSet(tradierAcctKey(),ACCT());
-  // For SANDBOX only — also sync to server (Live stays per-device)
-  if((tradierEnv||'sandbox')==='sandbox'&&_adminToken){
-    try{
-      await fetch('/api/tradier_sandbox',{
-        method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
-        body:JSON.stringify({token:TOKEN(),account:ACCT()})
-      });
-      addLog('✓ נשמר Tradier Sandbox (מוצפן + סינכרון שרת)','lo');
-    }catch(_){addLog('✓ נשמר Tradier Sandbox (מקומי)','lo');}
-  } else {
-    addLog('✓ נשמר Tradier '+(tradierEnv||'sandbox')+' (מקומי בלבד)','lo');
-  }
+  addLog('✓ נשמר עבור Tradier '+(tradierEnv||'sandbox')+' (מוצפן)','lo');
   exportToServer();
 }
 function getTickers(){return document.getElementById('tickers').value.split(/[\n,\s]+/).map(t=>t.trim().toUpperCase()).filter(Boolean);}

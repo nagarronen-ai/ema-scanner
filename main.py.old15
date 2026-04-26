@@ -139,19 +139,6 @@ async def save_finnhub(request: Request):
     db.save_finnhub_key(body.get("key", ""))
     return {"ok": True}
 
-# ── Tradier Sandbox Credentials (encrypted, synced) ──────────────────────────
-@app.get("/api/tradier_sandbox", dependencies=[Depends(verify_admin)])
-def get_tradier_sandbox():
-    return db._get("tradier_sandbox", {})
-
-@app.post("/api/tradier_sandbox", dependencies=[Depends(verify_admin)])
-async def save_tradier_sandbox(request: Request):
-    data = await request.json()
-    db._set("tradier_sandbox", data)
-    return {"ok": True}
-
-
-
 # ── TastyTrade Proxy ──────────────────────────────────────────────────────────
 TT_LIVE    = "https://api.tastytrade.com"
 TT_SANDBOX = "https://api.cert.tastyworks.com"
