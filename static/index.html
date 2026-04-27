@@ -1427,39 +1427,46 @@ async function loadFromServer(){
     }
     addLog('✅ נטענו נתונים מהשרת: '+(_tradesCache.length)+' עסקאות, '+(Object.keys(_listsCache).length)+' רשימות','lo');
     // Re-render list buttons after server load
-    // Load Finnhub key from server
+    // Load Finnhub key from server (always populate field — it's not too sensitive for the input)
     try{
       const fh=await fetch('/api/finnhub_key',{headers:{'Authorization':'Bearer '+_adminToken}});
       if(fh.ok){
         const d=await fh.json();
         if(d.key&&d.key.trim()){
           FINNHUB_KEY=d.key;
-          await secureSet('finnhub_key',d.key);
+          if(_encInitialized) await secureSet('finnhub_key',d.key);
           const el=document.getElementById('finnhub-key');
           if(el)el.value=d.key;
-          console.log('✓ Finnhub key loaded from server');
+          addLog('✓ Finnhub key נטען מהשרת','lo');
         }
       }
-    }catch(_){}
-    // Load Tradier Sandbox creds from server (Live stays local)
+    }catch(e){console.warn('Finnhub load:',e);}
+
+    // Load Tradier Sandbox creds from server
     try{
       const ts=await fetch('/api/tradier_sandbox',{headers:{'Authorization':'Bearer '+_adminToken}});
       if(ts.ok){
         const d=await ts.json();
         if(d.token){
-          await secureSet('tradier_token_sandbox',d.token);
-          await secureSet('tradier_account_sandbox',d.account||'');
-          // If currently in sandbox env, populate fields
+          if(_encInitialized){
+            await secureSet('tradier_token_sandbox',d.token);
+            await secureSet('tradier_account_sandbox',d.account||'');
+          } else {
+            // Fallback: store plain (will be encrypted on next save)
+            localStorage.setItem('tradier_token_sandbox',d.token);
+            localStorage.setItem('tradier_account_sandbox',d.account||'');
+          }
+          // Populate fields if currently on Sandbox env
           if((tradierEnv||'sandbox')==='sandbox'){
             const tEl=document.getElementById('api-token');
             const aEl=document.getElementById('account-id');
             if(tEl)tEl.value=d.token;
             if(aEl)aEl.value=d.account||'';
           }
-          console.log('✓ Tradier Sandbox creds loaded from server');
+          addLog('✓ Tradier Sandbox creds נטענו (לחץ על Sandbox כדי להציג)','lo');
         }
       }
-    }catch(_){}
+    }catch(e){console.warn('Tradier sandbox load:',e);}
     if(typeof renderListBtns==='function') renderListBtns();
     if(typeof renderTradeLog==='function') renderTradeLog();
     if(typeof updateTradeLogBadge==='function') updateTradeLogBadge();
