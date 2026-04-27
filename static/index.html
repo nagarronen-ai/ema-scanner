@@ -907,7 +907,8 @@ function showLoginScreen(){
           box-sizing: border-box !important;
         }
         body.login-active { overflow: hidden !important; }
-        body.login-active > *:not(#login-overlay) { display: none !important; }
+        body.login-active > *:not(#login-overlay) { visibility: hidden !important; }
+        body:not(.login-active) #login-overlay { display: none !important; }
       `;
       document.head.appendChild(st);
     }
@@ -947,8 +948,12 @@ function showLoginScreen(){
 
 function hideLoginScreen(){
   const ov = document.getElementById('login-overlay');
-  if(ov) ov.style.display = 'none';
+  if(ov){
+    ov.style.display = 'none';
+    ov.style.visibility = 'hidden';
+  }
   document.body.classList.remove('login-active');
+  document.documentElement.classList.remove('login-active');
   _loginComplete = true;
 }
 
@@ -4422,7 +4427,8 @@ window.addEventListener('beforeunload',()=>{
   }catch(_){}
 });
 // SECURITY: Show login screen if not authenticated
-const savedToken = sessionStorage.getItem('_admin_token');
+// Check both localStorage (remember me) and sessionStorage
+const savedToken = localStorage.getItem('_admin_token') || sessionStorage.getItem('_admin_token');
 if(savedToken){
   // Verify token is still valid
   fetch('/api/admin/verify', {
