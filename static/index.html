@@ -883,7 +883,34 @@ function showLoginScreen(){
   if(!overlay){
     overlay = document.createElement('div');
     overlay.id = 'login-overlay';
-    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:2147483647;background:#0a0a0a;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);overflow:auto;';
+    // Inject CSS via stylesheet — beats inline overflow constraints
+    if(!document.getElementById('login-overlay-style')){
+      const st = document.createElement('style');
+      st.id = 'login-overlay-style';
+      st.textContent = `
+        #login-overlay {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          bottom: 0 !important;
+          width: 100vw !important;
+          height: 100vh !important;
+          z-index: 2147483647 !important;
+          background: #0a0a0a !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          overflow: auto !important;
+          margin: 0 !important;
+          padding: 16px !important;
+          box-sizing: border-box !important;
+        }
+        body.login-active { overflow: hidden !important; }
+        body.login-active > *:not(#login-overlay) { display: none !important; }
+      `;
+      document.head.appendChild(st);
+    }
     overlay.innerHTML = `
       <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;width:380px;max-width:92vw;" dir="rtl">
         <div style="text-align:center;margin-bottom:24px;">
@@ -910,8 +937,10 @@ function showLoginScreen(){
         </div>
         <div id="login-error" style="font-size:12px;color:#ef4444;margin-top:12px;text-align:center;min-height:16px;"></div>
       </div>`;
-    document.body.appendChild(overlay);
+    // Append to documentElement (above body) to escape parent overflow
+    (document.documentElement).appendChild(overlay);
   }
+  document.body.classList.add('login-active');
   overlay.style.display = 'flex';
   setTimeout(()=>document.getElementById('login-username')?.focus(),100);
 }
@@ -919,6 +948,7 @@ function showLoginScreen(){
 function hideLoginScreen(){
   const ov = document.getElementById('login-overlay');
   if(ov) ov.style.display = 'none';
+  document.body.classList.remove('login-active');
   _loginComplete = true;
 }
 
