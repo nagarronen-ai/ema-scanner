@@ -2,7 +2,7 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
 <title>EMA Scanner</title>
 <style>
 :root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--text:#e8eaf0;--muted:#7b7f94;--accent:#4f6ef7;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--teal:#14b8a6;--r:10px;--rs:6px;}
@@ -143,7 +143,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <label>API Token</label>
     <input type="password" id="api-token" placeholder="הכנס Tradier token..."/>
     <label>Account ID (למסחר בלבד)</label>
-    <input type="text" id="account-id" placeholder="12345678"/>
+    <input type="text" id="account-id" placeholder="12345678"/ inputmode="numeric">
     <div style="display:flex;gap:6px;margin-top:10px;">
       <button class="btn-primary btn-sm" style="flex:1;" onclick="testConnection()">בדוק חיבור</button>
       <button class="btn-secondary btn-sm" style="flex:1;" onclick="saveConfig()">שמור</button>
@@ -498,11 +498,11 @@ UNH</textarea>
   </div>
   <div class="row">
     <div><label>טיקר</label><input type="text" id="ac-ticker" placeholder="SQQQ" style="text-transform:uppercase;"/></div>
-    <div><label>כמות</label><input type="number" id="ac-qty" placeholder="500"/></div>
+    <div><label>כמות</label><input type="number" id="ac-qty" placeholder="500"/ inputmode="numeric"></div>
   </div>
   <div class="row">
-    <div><label>מחיר כניסה ($)</label><input type="number" id="ac-entry" placeholder="47.45" step="0.01"/></div>
-    <div><label>מחיר יציאה ($)</label><input type="number" id="ac-exit" placeholder="70.00" step="0.01"/></div>
+    <div><label>מחיר כניסה ($)</label><input type="number" id="ac-entry" placeholder="47.45" step="0.01"/ inputmode="numeric"></div>
+    <div><label>מחיר יציאה ($)</label><input type="number" id="ac-exit" placeholder="70.00" step="0.01"/ inputmode="numeric"></div>
   </div>
   <div class="row">
     <div><label>תאריך כניסה</label><input type="date" id="ac-entry-date"/></div>
@@ -944,7 +944,22 @@ function showLoginScreen(){
   }
   document.body.classList.add('login-active');
   overlay.style.display = 'flex';
-  setTimeout(()=>document.getElementById('login-username')?.focus(),100);
+  overlay.style.visibility = 'visible';
+  // Reset login form to step 1 (in case user was mid-2FA when logged out)
+  const s1 = document.getElementById('login-step-1');
+  const s2 = document.getElementById('login-step-2');
+  if(s1) s1.style.display = 'block';
+  if(s2) s2.style.display = 'none';
+  // Clear previous values
+  const u = document.getElementById('login-username');
+  const p = document.getElementById('login-password');
+  const e = document.getElementById('login-error');
+  if(p) p.value = '';
+  if(e) e.textContent = '';
+  setTimeout(()=>{
+    if(u && !u.value) u.focus();
+    else if(p) p.focus();
+  },100);
 }
 
 function hideLoginScreen(){
