@@ -119,6 +119,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <button class="btn-secondary btn-sm" onclick="showSnapshotPicker()">📂 שחזר מ-Snapshot</button>
     <button class="btn-secondary btn-sm" onclick="createSnapshot('manual')" id="sync-btn" title="צור snapshot על השרת">☁ גבה לשרת</button>
     <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
+    <button class="btn-secondary btn-sm" onclick="logout()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);" title="התנתקות מהמערכת">🔒 התנתק</button>
     <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
     <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
     <button class="btn-secondary btn-sm" onclick="exportCSV()">ייצוא CSV</button>
@@ -925,8 +926,8 @@ function showLoginScreen(){
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
           <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#888;margin-bottom:14px;cursor:pointer;">
-            <input type="checkbox" id="login-remember" checked style="width:14px;height:14px;cursor:pointer;"/>
-            השאר אותי מחובר
+            <input type="checkbox" id="login-remember" style="width:14px;height:14px;cursor:pointer;"/>
+            השאר אותי מחובר במכשיר זה
           </label>
           <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">כניסה</button>
         </div>
@@ -982,8 +983,16 @@ async function doLoginStep1(){
     if(data.token){
       const remember = document.getElementById('login-remember')?.checked !== false;
       setAdminToken(data.token, remember);
+      // Derive encryption key from login password (single-password model)
+      try{
+        await initEncryption(pw);
+        _encInitialized = true;
+        sessionStorage.setItem('_enc_session', pw); // Survives refresh
+      }catch(e){console.warn('Encryption init failed:',e);}
       hideLoginScreen();
       addLog('✓ התחברות הצליחה'+(remember?' (נשמר)':''),'lo');
+      // Restore decrypted fields from local storage (if any)
+      if(typeof restoreDecryptedFields==='function') await restoreDecryptedFields();
       if(typeof loadFromServer==='function') loadFromServer();
     }
   }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
@@ -1887,7 +1896,10 @@ async function saveFinnhubKey(val){
 }
 
 async function saveConfig(){
-  if(!_encInitialized){showPasswordModal('unlock',()=>saveConfig());return;}
+  if(!_encInitialized){
+    addLog('⚠ הצפנה לא הופעלה — התחבר מחדש','le');
+    return;
+  }
   await secureSet(tradierTokenKey(),TOKEN());
   await secureSet(tradierAcctKey(),ACCT());
   // For SANDBOX only — also sync to server (Live stays per-device)
@@ -4375,9 +4387,7 @@ setInterval(()=>{
     _cryptoKey=null;
     _encInitialized=false;
     // Show password modal again
-    if(localStorage.getItem(MASTER_CHECK_KEY)){
-      showPasswordModal('unlock');
-    }
+    showLoginScreen();
     _lastActivity=Date.now(); // Reset to prevent repeated logouts
   }
 },30*1000); // Check every 30 seconds
@@ -4430,7 +4440,6 @@ window.addEventListener('beforeunload',()=>{
 // Check both localStorage (remember me) and sessionStorage
 const savedToken = localStorage.getItem('_admin_token') || sessionStorage.getItem('_admin_token');
 if(savedToken){
-  // Verify token is still valid
   fetch('/api/admin/verify', {
     method: 'POST',
     headers: {'Content-Type':'application/json'},
@@ -4439,8 +4448,17 @@ if(savedToken){
     if(d&&d.valid){
       _adminToken = savedToken;
       _loginComplete = true;
-      if(typeof loadFromServer === 'function') loadFromServer();
+      // SINGLE-PASSWORD: if encrypted data exists but no session password,
+      // need to re-login to restore encryption key
+      if(localStorage.getItem(MASTER_CHECK_KEY) && hasEncryptedData() &&
+         !sessionStorage.getItem('_enc_session')){
+        // Force re-login to derive encryption key from password
+        showLoginScreen();
+      } else {
+        if(typeof loadFromServer === 'function') loadFromServer();
+      }
     } else {
+      localStorage.removeItem('_admin_token');
       sessionStorage.removeItem('_admin_token');
       showLoginScreen();
     }
@@ -4449,21 +4467,19 @@ if(savedToken){
   showLoginScreen();
 }
 
-// Try auto-unlock from sessionStorage (cleared when browser closes)
+// Single-password model: encryption key derived from login password
+// On refresh, retrieve from sessionStorage (set during login)
 const sessPw=sessionStorage.getItem('_enc_session');
-if(sessPw&&localStorage.getItem(MASTER_CHECK_KEY)){
+if(sessPw){
   initEncryption(sessPw).then(ok=>{
-    if(ok){_encInitialized=true;restoreDecryptedFields();addLog('🔐 הצפנה פעילה (session)','lo');}
-    else{sessionStorage.removeItem('_enc_session');showPasswordModal('unlock');}
+    if(ok){
+      _encInitialized=true;
+      restoreDecryptedFields();
+      addLog('🔐 הצפנה פעילה','lo');
+    }
   });
-} else if(localStorage.getItem(MASTER_CHECK_KEY)){
-  showPasswordModal('unlock');
-} else if(localStorage.getItem('tradier_token')||localStorage.getItem('tt_client_id')){
-  // Unencrypted data exists — prompt to set encryption password
-  setTimeout(()=>{
-    if(!_encInitialized) showPasswordModal('create');
-  },1500);
 }
+// No more separate password modal — encryption uses login password automatically
 // Migrate per-broker scan cache to global (one-time)
 try{
   if(!localStorage.getItem('_scan_global_migrated')){
