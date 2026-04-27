@@ -883,7 +883,7 @@ function showLoginScreen(){
   if(!overlay){
     overlay = document.createElement('div');
     overlay.id = 'login-overlay';
-    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0a0a0a;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;z-index:2147483647;background:#0a0a0a;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(20px);overflow:auto;';
     overlay.innerHTML = `
       <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;width:380px;max-width:92vw;" dir="rtl">
         <div style="text-align:center;margin-bottom:24px;">
