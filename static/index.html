@@ -5,6 +5,91 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
 <title>EMA Scanner</title>
 <style>
+/* ═══════════════════════════════════════════════════════════════════════
+   iOS / MOBILE OPTIMIZATIONS
+   ═══════════════════════════════════════════════════════════════════════ */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  box-sizing: border-box;
+}
+button, .btn-primary, .btn-secondary, .btn-amber, .btn-sm, [onclick] {
+  touch-action: manipulation;
+}
+/* Mobile breakpoint */
+@media (max-width: 768px) {
+  /* Tables — small font + scroll horizontally */
+  table {
+    font-size: 11px !important;
+    width: 100% !important;
+  }
+  th, td {
+    padding: 6px 4px !important;
+    white-space: nowrap;
+  }
+  /* Modals — fit screen */
+  .modal-box {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    max-height: calc(100dvh - 16px) !important;
+    margin: 8px !important;
+    padding: 16px !important;
+  }
+  .modal-overlay {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  /* Inputs — prevent iOS zoom */
+  input, select, textarea {
+    font-size: 16px !important;
+    min-height: 44px !important;
+  }
+  /* Buttons — minimum touch target */
+  button:not(.btn-sm), .btn-primary, .btn-secondary, .btn-amber {
+    min-height: 44px !important;
+    padding: 10px 16px !important;
+    font-size: 14px !important;
+  }
+  button.btn-sm, .btn-sm {
+    min-height: 36px !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+  }
+  /* Header wraps */
+  header, .top-bar {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  /* Sidebar columns full-width */
+  .col-12, .col-6, .col-4, .col-3, [class*="col-"] {
+    flex: 1 1 100% !important;
+    max-width: 100% !important;
+  }
+  /* Modal title smaller */
+  .modal-title {
+    font-size: 16px !important;
+  }
+}
+/* iPhone SE / very narrow */
+@media (max-width: 380px) {
+  table { font-size: 10px !important; }
+  .modal-title { font-size: 14px !important; }
+  button { font-size: 12px !important; }
+}
+/* Phone landscape */
+@media (max-height: 500px) and (orientation: landscape) {
+  .modal-box {
+    max-height: calc(100dvh - 8px) !important;
+    margin: 4px !important;
+  }
+  #login-overlay > div {
+    transform: scale(0.85);
+  }
+}
+/* Login overlay uses dvh */
+@supports (height: 100dvh) {
+  #login-overlay { height: 100dvh !important; }
+}
+
 :root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--text:#e8eaf0;--muted:#7b7f94;--accent:#4f6ef7;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--teal:#14b8a6;--r:10px;--rs:6px;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh;}
@@ -279,7 +364,7 @@ UNH</textarea>
     <span><span id="sel-count">0</span> נבחרו &nbsp;<button class="btn-trade" id="trade-btn" onclick="openTradeModal()" disabled>בצע עסקה ▶</button></span>
   </div>
   <div class="table-wrap">
-    <table>
+    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table>
       <thead><tr>
         <th class="ns" style="width:34px;"></th>
         <th onclick="sortBy('ticker')"># טיקר</th>
@@ -298,7 +383,7 @@ UNH</textarea>
       <tbody id="table-body">
         <tr><td colspan="11"><div class="empty-state">חבר Tradier API token ← הרץ סריקה</div></td></tr>
       </tbody>
-    </table>
+    </table></div>
   </div>
 </div>
 </div>
@@ -396,7 +481,7 @@ UNH</textarea>
       <span id="tl-orders-arrow" style="color:var(--muted);">▼</span>
     </div>
     <div id="tl-orders-body" style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
@@ -411,7 +496,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-orders-rows"></tbody>
-      </table>
+      </table></div>
     </div>
   </div>
   <!-- POSITIONS TABLE -->
@@ -423,7 +508,7 @@ UNH</textarea>
       <span id="tl-positions-arrow" style="color:var(--muted);">▼</span>
     </div>
     <div id="tl-positions-body" style="overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
@@ -438,7 +523,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-positions-rows"></tbody>
-      </table>
+      </table></div>
     </div>
   </div>
   <!-- CLOSED POSITIONS TABLE -->
@@ -453,7 +538,7 @@ UNH</textarea>
       </div>
     </div>
     <div id="tl-closed-body" style="display:none;overflow-x:auto;">
-      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סימבול</th>
@@ -468,7 +553,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-closed-rows"></tbody>
-      </table>
+      </table></div>
     </div>
   </div>
   <div id="tl-body" style="display:none;"></div>
@@ -914,7 +999,7 @@ function showLoginScreen(){
       document.head.appendChild(st);
     }
     overlay.innerHTML = `
-      <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;width:380px;max-width:92vw;" dir="rtl">
+      <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;width:100%;max-width:380px;box-sizing:border-box;margin:auto;" dir="rtl">
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:32px;margin-bottom:8px;">🔒</div>
           <div style="font-size:18px;font-weight:500;color:#fff;">EMA Scanner</div>
@@ -922,19 +1007,19 @@ function showLoginScreen(){
         </div>
         <div id="login-step-1">
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">שם משתמש</label>
-          <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
+          <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:16px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
-          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
+          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:16px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#888;margin-bottom:14px;cursor:pointer;">
             <input type="checkbox" id="login-remember" style="width:14px;height:14px;cursor:pointer;"/>
             השאר אותי מחובר במכשיר זה
           </label>
-          <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">כניסה</button>
+          <button onclick="doLoginStep1()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">כניסה</button>
         </div>
         <div id="login-step-2" style="display:none !important;">
           <div style="font-size:13px;color:#fff;margin-bottom:12px;">📱 הזן קוד 2FA מהאפליקציה:</div>
-          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
-          <button onclick="doLoginStep2()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">אמת והיכנס</button>
+          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
+          <button onclick="doLoginStep2()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">אמת והיכנס</button>
           <button onclick="cancelLogin()" style="width:100%;padding:8px;background:transparent;color:#888;border:none;font-size:11px;margin-top:8px;cursor:pointer;">ביטול</button>
         </div>
         <div id="login-error" style="font-size:12px;color:#ef4444;margin-top:12px;text-align:center;min-height:16px;"></div>
