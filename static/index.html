@@ -315,7 +315,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
-        <button class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;" title="OAuth Authorization Code flow לקבלת Refresh Token חדש">🔑 OAuth קבל Token</button>
+        <button id="tt-oauth-btn" class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;display:none;" title="OAuth flow לקבלת Refresh Token (רק ב-Live)">🔑 OAuth קבל Token</button>
         <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
       </div>
       <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
@@ -2863,6 +2863,12 @@ async function setTTEnv(e){
   document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-tt-live').className=e==='live'?'active':'';
   localStorage.setItem('tt_env',e);
+  // OAuth button only relevant in Live (Sandbox provides refresh_token directly)
+  const oauthBtn=document.getElementById('tt-oauth-btn');
+  if(oauthBtn) oauthBtn.style.display=e==='live'?'':'none';
+  // Clear any error status
+  const statusEl=document.getElementById('tt-status');
+  if(statusEl){statusEl.textContent='';statusEl.style.color='var(--muted)';}
   // Load env-specific credentials into form fields
   if(_encInitialized){
     const cid=await secureGet(ttClientIdKey());
