@@ -1786,10 +1786,11 @@ function analyzeTicker(ticker,bars,spyRet3m){
   if(spyRet3m!==null&&n>63)rs3m=(close0/closes[n-1-63]-1)*100-spyRet3m;
   const rsOk=rs3m===null||rs3m>rsFilter;
   let signal='watch';
-  if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
+  // Short cross is a bearish signal — disqualifies Near IBD label even if other criteria met
+  if(emaCrossShort||priceCrossShort)signal='short';
+  else if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
   else if(priceCrossLong&&above200&&highVol&&rsOk)signal='entry';
   else if(above50&&above200&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
-  else if(emaCrossShort||priceCrossShort)signal='short';
   return{ticker,close:close0,above50,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21};
 }
 
