@@ -315,6 +315,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
+        <button class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;" title="OAuth Authorization Code flow לקבלת Refresh Token חדש">🔑 OAuth קבל Token</button>
         <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
       </div>
       <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
@@ -2910,6 +2911,116 @@ async function ttRequest(method, path, body=null){
   }
   return r.json();
 }
+
+// ── OAuth Authorization Code Flow ────────────────────────────────────────────
+// Used to get refresh_token for Live (Sandbox provides it directly in Create Grant)
+async function ttOAuthFlow(){
+  const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+  const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+  if(!clientId){
+    alert('הכנס Client ID קודם');return;
+  }
+  if(!clientSecret){
+    alert('הכנס Client Secret קודם');return;
+  }
+  const redirectUri=window.location.origin+'/';
+  const state=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
+  // Store state + secret for callback validation
+  sessionStorage.setItem('tt_oauth_state',state);
+  sessionStorage.setItem('tt_oauth_client_id',clientId);
+  sessionStorage.setItem('tt_oauth_client_secret',clientSecret);
+  sessionStorage.setItem('tt_oauth_env',ttEnv);
+
+  const baseUrl=ttEnv==='live'?'https://my.tastytrade.com':'https://cert-my.staging-tasty.works';
+  const authUrl=baseUrl+'/auth.html?'+new URLSearchParams({
+    response_type:'code',
+    client_id:clientId,
+    redirect_uri:redirectUri,
+    scope:'read trade openid',
+    state:state
+  }).toString();
+
+  addLog('🔑 פותח OAuth authorization בחלון חדש...','li');
+  // Open in new window so user can authorize
+  const popup=window.open(authUrl,'tt_oauth','width=500,height=700');
+  if(!popup){
+    alert('Popup חסום — אפשר popups לאתר זה ונסה שוב');
+    return;
+  }
+  // Poll for the popup to redirect back with code
+  const pollInterval=setInterval(async()=>{
+    try{
+      if(popup.closed){clearInterval(pollInterval);addLog('⚠ חלון ה-OAuth נסגר','le');return;}
+      // Check if popup redirected to our origin (will throw cross-origin error otherwise)
+      const popupUrl=popup.location.href;
+      if(popupUrl.includes('code=')&&popupUrl.includes(window.location.origin)){
+        clearInterval(pollInterval);
+        const url=new URL(popupUrl);
+        const code=url.searchParams.get('code');
+        const returnedState=url.searchParams.get('state');
+        const expectedState=sessionStorage.getItem('tt_oauth_state');
+        popup.close();
+        if(returnedState!==expectedState){
+          addLog('✗ OAuth state mismatch — אבטחה','le');return;
+        }
+        await ttExchangeCode(code);
+      }
+    }catch(_){
+      // Cross-origin error while still on TastyTrade — keep polling
+    }
+  },500);
+}
+
+async function ttExchangeCode(code){
+  const clientId=sessionStorage.getItem('tt_oauth_client_id');
+  const clientSecret=sessionStorage.getItem('tt_oauth_client_secret');
+  const redirectUri=window.location.origin+'/';
+  try{
+    addLog('🔄 מחליף code ב-refresh token...','li');
+    const data=await ttRequest('POST','/oauth/token',{
+      'grant_type':'authorization_code',
+      'code':code,
+      'client_id':clientId,
+      'client_secret':clientSecret,
+      'redirect_uri':redirectUri
+    });
+    const refreshToken=data['refresh_token']||data.data?.['refresh_token'];
+    const accessToken=data['access_token']||data.data?.['access_token'];
+    if(!refreshToken)throw new Error('לא התקבל refresh_token');
+    // Save the new refresh_token
+    await secureSet('tt_refresh_token',refreshToken);
+    const el=document.getElementById('tt-refresh-token');
+    if(el)el.value=refreshToken;
+    if(accessToken){
+      ttSessionToken=accessToken;
+      ttTokenIssuedAt=Date.now();
+    }
+    addLog('✓ Refresh Token נשמר! עכשיו לחץ "התחבר / Refresh"','lo');
+    alert('✓ הצלחה!\nRefresh Token נשמר.\nלחץ "התחבר / Refresh" להמשך.');
+    // Cleanup
+    sessionStorage.removeItem('tt_oauth_state');
+    sessionStorage.removeItem('tt_oauth_client_id');
+    sessionStorage.removeItem('tt_oauth_client_secret');
+    sessionStorage.removeItem('tt_oauth_env');
+  }catch(e){
+    addLog('✗ OAuth exchange failed: '+e.message,'le');
+    alert('שגיאה: '+e.message);
+  }
+}
+
+// Check if we returned from OAuth authorization on page load
+(()=>{const params=new URLSearchParams(window.location.search);
+  if(params.get('code')&&params.get('state')){
+    const expected=sessionStorage.getItem('tt_oauth_state');
+    if(expected&&expected===params.get('state')){
+      // Came back as redirect (not popup) — handle the code
+      ttExchangeCode(params.get('code')).then(()=>{
+        // Clean URL
+        window.history.replaceState({},'',window.location.pathname);
+      });
+    }
+  }
+})();
 
 async function ttLogin(){
   const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
