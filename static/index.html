@@ -1715,7 +1715,8 @@ function analyzeTicker(ticker,bars,spyRet3m){
     if(trArr.length>=ATR_PERIOD)atrVal=avg(trArr.slice(-ATR_PERIOD));
   }
   const sma50=n>=50?avg(closes.slice(-50)):null;
-  const sma200=n>=150?avg(closes.slice(-150)):null;
+  const sma150=n>=150?avg(closes.slice(-150)):null;
+  const sma200=sma150; // Backward compat alias
   const e21=ema(closes,21),e50=ema(closes,50);
   const e21_0=e21[n-1],e50_0=e50[n-1],e21_1=e21[n-2],e50_1=e50[n-2];
   const high50d=n>51?Math.max(...highs.slice(-51,-1)):null;
@@ -1724,7 +1725,8 @@ function analyzeTicker(ticker,bars,spyRet3m){
   const emaTol=(parseFloat(document.getElementById('ema-tol').value)||0.5)/100;
   const rsFilter=parseFloat(document.getElementById('rs-filter').value)||-2;
   const above50=sma50!=null?close0>sma50:null;
-  const above200=sma200!=null?close0>sma200:null;
+  const above150=sma150!=null?close0>sma150:null;
+  const above200=above150; // Backward compat alias (was actually SMA150)
   const aboveEMA21=e21_0!=null?close0>e21_0:null;
   const breakout=high50d?close0>high50d:null;
   // Volume: check if ANY of the last N days had high volume
@@ -1795,9 +1797,10 @@ function analyzeTicker(ticker,bars,spyRet3m){
   let signal='watch';
   // Short cross is a bearish signal — disqualifies Near IBD label even if other criteria met
   if(emaCrossShort||priceCrossShort)signal='short';
-  else if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
-  else if(priceCrossLong&&above200&&highVol&&rsOk)signal='entry';
-  else if(above50&&above200&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
+  else if(above50&&above150&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
+  // P-Entry requires being above BOTH SMA50 AND SMA150 (don't enter below SMA50!)
+  else if(priceCrossLong&&above50&&above150&&highVol&&rsOk)signal='entry';
+  else if(above50&&above150&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
   return{ticker,close:close0,above50,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21};
 }
 
