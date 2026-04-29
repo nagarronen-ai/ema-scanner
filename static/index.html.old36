@@ -5,91 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
 <title>EMA Scanner</title>
 <style>
-/* ═══════════════════════════════════════════════════════════════════════
-   iOS / MOBILE OPTIMIZATIONS
-   ═══════════════════════════════════════════════════════════════════════ */
-* {
-  -webkit-tap-highlight-color: transparent;
-  -webkit-text-size-adjust: 100%;
-  box-sizing: border-box;
-}
-button, .btn-primary, .btn-secondary, .btn-amber, .btn-sm, [onclick] {
-  touch-action: manipulation;
-}
-/* Mobile breakpoint */
-@media (max-width: 768px) {
-  /* Tables — small font + scroll horizontally */
-  table {
-    font-size: 11px !important;
-    width: 100% !important;
-  }
-  th, td {
-    padding: 6px 4px !important;
-    white-space: nowrap;
-  }
-  /* Modals — fit screen */
-  .modal-box {
-    width: calc(100vw - 16px) !important;
-    max-width: calc(100vw - 16px) !important;
-    max-height: calc(100dvh - 16px) !important;
-    margin: 8px !important;
-    padding: 16px !important;
-  }
-  .modal-overlay {
-    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-  }
-  /* Inputs — prevent iOS zoom */
-  input, select, textarea {
-    font-size: 16px !important;
-    min-height: 44px !important;
-  }
-  /* Buttons — minimum touch target */
-  button:not(.btn-sm), .btn-primary, .btn-secondary, .btn-amber {
-    min-height: 44px !important;
-    padding: 10px 16px !important;
-    font-size: 14px !important;
-  }
-  button.btn-sm, .btn-sm {
-    min-height: 36px !important;
-    padding: 8px 12px !important;
-    font-size: 12px !important;
-  }
-  /* Header wraps */
-  header, .top-bar {
-    flex-wrap: wrap !important;
-    gap: 6px !important;
-  }
-  /* Sidebar columns full-width */
-  .col-12, .col-6, .col-4, .col-3, [class*="col-"] {
-    flex: 1 1 100% !important;
-    max-width: 100% !important;
-  }
-  /* Modal title smaller */
-  .modal-title {
-    font-size: 16px !important;
-  }
-}
-/* iPhone SE / very narrow */
-@media (max-width: 380px) {
-  table { font-size: 10px !important; }
-  .modal-title { font-size: 14px !important; }
-  button { font-size: 12px !important; }
-}
-/* Phone landscape */
-@media (max-height: 500px) and (orientation: landscape) {
-  .modal-box {
-    max-height: calc(100dvh - 8px) !important;
-    margin: 4px !important;
-  }
-  #login-overlay > div {
-    transform: scale(0.85);
-  }
-}
-/* Login overlay uses dvh */
-@supports (height: 100dvh) {
-  #login-overlay { height: 100dvh !important; }
-}
-
 :root{--bg:#0f1117;--bg2:#1a1d27;--bg3:#232635;--border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.14);--text:#e8eaf0;--muted:#7b7f94;--accent:#4f6ef7;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--teal:#14b8a6;--r:10px;--rs:6px;}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh;}
@@ -315,7 +230,6 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
-        <button id="tt-oauth-btn" class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;display:none;" title="OAuth flow לקבלת Refresh Token (רק ב-Live)">🔑 OAuth קבל Token</button>
         <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
       </div>
       <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
@@ -365,7 +279,7 @@ UNH</textarea>
     <span><span id="sel-count">0</span> נבחרו &nbsp;<button class="btn-trade" id="trade-btn" onclick="openTradeModal()" disabled>בצע עסקה ▶</button></span>
   </div>
   <div class="table-wrap">
-    <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table>
+    <table>
       <thead><tr>
         <th class="ns" style="width:34px;"></th>
         <th onclick="sortBy('ticker')"># טיקר</th>
@@ -384,7 +298,7 @@ UNH</textarea>
       <tbody id="table-body">
         <tr><td colspan="11"><div class="empty-state">חבר Tradier API token ← הרץ סריקה</div></td></tr>
       </tbody>
-    </table></div>
+    </table>
   </div>
 </div>
 </div>
@@ -482,7 +396,7 @@ UNH</textarea>
       <span id="tl-orders-arrow" style="color:var(--muted);">▼</span>
     </div>
     <div id="tl-orders-body" style="overflow-x:auto;">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
@@ -497,7 +411,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-orders-rows"></tbody>
-      </table></div>
+      </table>
     </div>
   </div>
   <!-- POSITIONS TABLE -->
@@ -509,7 +423,7 @@ UNH</textarea>
       <span id="tl-positions-arrow" style="color:var(--muted);">▼</span>
     </div>
     <div id="tl-positions-body" style="overflow-x:auto;">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;">סימבול</th>
@@ -524,7 +438,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-positions-rows"></tbody>
-      </table></div>
+      </table>
     </div>
   </div>
   <!-- CLOSED POSITIONS TABLE -->
@@ -539,7 +453,7 @@ UNH</textarea>
       </div>
     </div>
     <div id="tl-closed-body" style="display:none;overflow-x:auto;">
-      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;"><table style="width:100%;border-collapse:collapse;font-size:12.5px;">
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px;">
         <thead>
           <tr style="background:var(--bg2);border-bottom:1px solid var(--border);">
             <th style="padding:8px 12px;text-align:right;color:var(--muted);font-weight:500;">סימבול</th>
@@ -554,7 +468,7 @@ UNH</textarea>
           </tr>
         </thead>
         <tbody id="tl-closed-rows"></tbody>
-      </table></div>
+      </table>
     </div>
   </div>
   <div id="tl-body" style="display:none;"></div>
@@ -810,7 +724,7 @@ UNH</textarea>
 // Master password → PBKDF2 → AES-256-GCM key
 // Sensitive keys encrypted: tradier_token, tt_client_id, tt_client_secret, tt_refresh_token
 
-const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id_live','tt_client_secret_live','tt_refresh_token_live','tt_client_id_sandbox','tt_client_secret_sandbox','tt_refresh_token_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember','finnhub_key'];
+const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember','finnhub_key'];
 const SALT_KEY='_enc_salt';
 const MASTER_CHECK_KEY='_enc_check';
 let _cryptoKey=null;
@@ -944,13 +858,9 @@ async function restoreDecryptedFields(){
   if(token){const el=document.getElementById('api-token');if(el)el.value=token;}
   const acct=await secureGet(tradierAcctKey());
   if(acct){const el=document.getElementById('account-id');if(el)el.value=acct;}
-  // TastyTrade — env-specific keys with legacy fallback
-  const cid=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'));
+  // TastyTrade
+  const cid=await secureGet('tt_client_id');
   if(cid){const el=document.getElementById('tt-client-id');if(el)el.value=cid;}
-  const cs=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'));
-  if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
-  const rt=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'));
-  if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
   // Restore Finnhub key
   const fhKey=await secureGet('finnhub_key');
   if(fhKey){
@@ -958,6 +868,10 @@ async function restoreDecryptedFields(){
     const el=document.getElementById('finnhub-key');
     if(el)el.value=fhKey;
   }
+  const cs=await secureGet('tt_client_secret');
+  if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
+  const rt=await secureGet('tt_refresh_token');
+  if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
 }
 
 // ── LOGIN GATE — username + password + 2FA before ANY UI access ─────────────
@@ -1000,7 +914,7 @@ function showLoginScreen(){
       document.head.appendChild(st);
     }
     overlay.innerHTML = `
-      <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;width:100%;max-width:380px;box-sizing:border-box;margin:auto;" dir="rtl">
+      <div style="background:#13121a;border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:32px;width:380px;max-width:92vw;" dir="rtl">
         <div style="text-align:center;margin-bottom:24px;">
           <div style="font-size:32px;margin-bottom:8px;">🔒</div>
           <div style="font-size:18px;font-weight:500;color:#fff;">EMA Scanner</div>
@@ -1008,19 +922,19 @@ function showLoginScreen(){
         </div>
         <div id="login-step-1">
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">שם משתמש</label>
-          <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:16px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
+          <input type="text" id="login-username" autocomplete="username" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <label style="display:block;font-size:11px;color:#888;margin-bottom:4px;">סיסמה</label>
-          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:16px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
+          <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLoginStep1()" style="width:100%;padding:10px;font-size:14px;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
           <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#888;margin-bottom:14px;cursor:pointer;">
             <input type="checkbox" id="login-remember" style="width:14px;height:14px;cursor:pointer;"/>
             השאר אותי מחובר במכשיר זה
           </label>
-          <button onclick="doLoginStep1()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">כניסה</button>
+          <button onclick="doLoginStep1()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">כניסה</button>
         </div>
         <div id="login-step-2" style="display:none !important;">
           <div style="font-size:13px;color:#fff;margin-bottom:12px;">📱 הזן קוד 2FA מהאפליקציה:</div>
-          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
-          <button onclick="doLoginStep2()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">אמת והיכנס</button>
+          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:16px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;"/>
+          <button onclick="doLoginStep2()" style="width:100%;padding:12px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;">אמת והיכנס</button>
           <button onclick="cancelLogin()" style="width:100%;padding:8px;background:transparent;color:#888;border:none;font-size:11px;margin-top:8px;cursor:pointer;">ביטול</button>
         </div>
         <div id="login-error" style="font-size:12px;color:#ef4444;margin-top:12px;text-align:center;min-height:16px;"></div>
@@ -1620,12 +1534,6 @@ const ACCT=()=>document.getElementById('account-id').value.trim();
 // Per-env storage keys
 const tradierTokenKey=()=>'tradier_token_'+(tradierEnv||'sandbox');
 const tradierAcctKey=()=>'tradier_account_'+(tradierEnv||'sandbox');
-// Per-env TT keys
-const ttClientIdKey=()=>'tt_client_id_'+(ttEnv||'sandbox');
-const ttClientSecretKey=()=>'tt_client_secret_'+(ttEnv||'sandbox');
-const ttRefreshTokenKey=()=>'tt_refresh_token_'+(ttEnv||'sandbox');
-const ttAccountKey=()=>'tt_account_'+(ttEnv||'sandbox');
-const ttAccountManualKey=()=>'tt_account_manual_'+(ttEnv||'sandbox');
 
 async function tGet(path,params={},_log){
   const url=new URL(BASE()+path);
@@ -1793,11 +1701,10 @@ function analyzeTicker(ticker,bars,spyRet3m){
   if(spyRet3m!==null&&n>63)rs3m=(close0/closes[n-1-63]-1)*100-spyRet3m;
   const rsOk=rs3m===null||rs3m>rsFilter;
   let signal='watch';
-  // Short cross is a bearish signal — disqualifies Near IBD label even if other criteria met
-  if(emaCrossShort||priceCrossShort)signal='short';
-  else if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
+  if(above50&&above200&&aboveEMA21&&breakout&&highVol&&emaCross&&rsOk)signal='strong';
   else if(priceCrossLong&&above200&&highVol&&rsOk)signal='entry';
   else if(above50&&above200&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
+  else if(emaCrossShort||priceCrossShort)signal='short';
   return{ticker,close:close0,above50,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21};
 }
 
@@ -2860,41 +2767,11 @@ function setBroker(b){
   if(secTT) secTT.style.display=b==='tastytrade'?'':'none';
 }
 
-async function setTTEnv(e){
-  ttEnv=e;ttSessionToken=null;ttTokenIssuedAt=0;
-  // Reset account — different envs have different accounts
-  ttAccountNumber=null;
-  const accountSelect=document.getElementById('tt-account-select');
-  if(accountSelect)accountSelect.innerHTML='';
-  const accountRow=document.getElementById('tt-accounts-row');
-  if(accountRow)accountRow.style.display='none';
-  // Load env-specific account if exists
-  const savedAccount=localStorage.getItem(ttAccountKey())||localStorage.getItem(ttAccountManualKey());
-  if(savedAccount){
-    ttAccountNumber=savedAccount;
-  }
+function setTTEnv(e){
+  ttEnv=e;ttSessionToken=null;
   document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-tt-live').className=e==='live'?'active':'';
   localStorage.setItem('tt_env',e);
-  // OAuth button only relevant in Live (Sandbox provides refresh_token directly)
-  const oauthBtn=document.getElementById('tt-oauth-btn');
-  if(oauthBtn) oauthBtn.style.display=e==='live'?'':'none';
-  // Clear any error status
-  const statusEl=document.getElementById('tt-status');
-  if(statusEl){statusEl.textContent='';statusEl.style.color='var(--muted)';}
-  // Load env-specific credentials into form fields
-  if(_encInitialized){
-    const cid=await secureGet(ttClientIdKey());
-    const cs=await secureGet(ttClientSecretKey());
-    const rt=await secureGet(ttRefreshTokenKey());
-    const cidEl=document.getElementById('tt-client-id');
-    const csEl=document.getElementById('tt-client-secret');
-    const rtEl=document.getElementById('tt-refresh-token');
-    if(cidEl)cidEl.value=cid||'';
-    if(csEl)csEl.value=cs||'';
-    if(rtEl)rtEl.value=rt||'';
-    addLog('🔄 TastyTrade '+e+' — credentials נטענו','li');
-  }
   _switchScanContext();
 }
 
@@ -2902,9 +2779,9 @@ async function setTTEnv(e){
 async function ttEnsureValidToken(){
   const ageMs=Date.now()-ttTokenIssuedAt;
   if(!ttSessionToken||ageMs>14*60*1000){
-    const clientId=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'));
-    const clientSecret=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'));
-    const refreshToken=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'));
+    const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+    const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+    const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
     if(!clientId||!clientSecret||!refreshToken) return;
     try{
       const headers={'Content-Type':'application/json'};
@@ -2948,151 +2825,10 @@ async function ttRequest(method, path, body=null){
   return r.json();
 }
 
-// ── OAuth Authorization Code Flow ────────────────────────────────────────────
-// Used to get refresh_token for Live (Sandbox provides it directly in Create Grant)
-async function ttOAuthFlow(){
-  const clientId=(await secureGet(ttClientIdKey()))||document.getElementById('tt-client-id')?.value.trim();
-  const clientSecret=(await secureGet(ttClientSecretKey()))||document.getElementById('tt-client-secret')?.value.trim();
-  if(!clientId){
-    alert('הכנס Client ID קודם');return;
-  }
-  if(!clientSecret){
-    alert('הכנס Client Secret קודם');return;
-  }
-  const redirectUri=window.location.origin+'/';
-  const state=Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);
-  // Store state + secret for callback validation
-  sessionStorage.setItem('tt_oauth_state',state);
-  sessionStorage.setItem('tt_oauth_client_id',clientId);
-  sessionStorage.setItem('tt_oauth_client_secret',clientSecret);
-  sessionStorage.setItem('tt_oauth_env',ttEnv);
-
-  const baseUrl=ttEnv==='live'?'https://my.tastytrade.com':'https://cert-my.staging-tasty.works';
-  const authUrl=baseUrl+'/auth.html?'+new URLSearchParams({
-    response_type:'code',
-    client_id:clientId,
-    redirect_uri:redirectUri,
-    scope:'read trade openid',
-    state:state
-  }).toString();
-
-  addLog('🔑 פותח OAuth authorization בחלון חדש...','li');
-  // Open in new window so user can authorize
-  const popup=window.open(authUrl,'tt_oauth','width=500,height=700');
-  if(!popup){
-    alert('Popup חסום — אפשר popups לאתר זה ונסה שוב');
-    return;
-  }
-  // Poll for the popup to redirect back with code
-  const pollInterval=setInterval(async()=>{
-    try{
-      if(popup.closed){clearInterval(pollInterval);addLog('⚠ חלון ה-OAuth נסגר ידנית','le');return;}
-      const popupUrl=popup.location.href;
-      // Check for redirect back to our origin (with code OR error)
-      if(popupUrl.includes(window.location.origin)){
-        const url=new URL(popupUrl);
-        const code=url.searchParams.get('code');
-        const error=url.searchParams.get('error');
-        const returnedState=url.searchParams.get('state');
-        const expectedState=sessionStorage.getItem('tt_oauth_state');
-        if(error){
-          clearInterval(pollInterval);
-          popup.close();
-          addLog('✗ OAuth: '+(url.searchParams.get('error_description')||error),'le');
-          alert('OAuth נכשל: '+(url.searchParams.get('error_description')||error));
-          return;
-        }
-        if(code){
-          clearInterval(pollInterval);
-          popup.close();
-          if(returnedState!==expectedState){
-            addLog('✗ OAuth state mismatch — אבטחה','le');return;
-          }
-          await ttExchangeCode(code);
-        }
-      }
-    }catch(_){
-      // Cross-origin while still on TastyTrade — keep polling
-    }
-  },500);
-}
-
-async function ttExchangeCode(code){
-  const clientId=sessionStorage.getItem('tt_oauth_client_id');
-  const clientSecret=sessionStorage.getItem('tt_oauth_client_secret');
-  const oauthEnv=sessionStorage.getItem('tt_oauth_env')||ttEnv;
-  const redirectUri=window.location.origin+'/';
-  try{
-    addLog('🔄 מחליף code ב-refresh token...','li');
-    // Direct fetch — don't go through ttRequest (which expects auth)
-    const r=await fetch('/tt-proxy/oauth/token?_env='+oauthEnv,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        'grant_type':'authorization_code',
-        'code':code,
-        'client_id':clientId,
-        'client_secret':clientSecret,
-        'redirect_uri':redirectUri
-      })
-    });
-    const data=await r.json();
-    if(!r.ok){
-      const err=data?.error?.message||data?.error_description||data?.error||JSON.stringify(data);
-      throw new Error(err);
-    }
-    const refreshToken=data['refresh_token']||data.data?.['refresh_token'];
-    const accessToken=data['access_token']||data.data?.['access_token'];
-    if(!refreshToken)throw new Error('לא התקבל refresh_token');
-    // Save the new refresh_token (env-specific)
-    await secureSet(ttRefreshTokenKey(),refreshToken);
-    await secureSet(ttClientIdKey(),clientId);
-    await secureSet(ttClientSecretKey(),clientSecret);
-    const el=document.getElementById('tt-refresh-token');
-    if(el)el.value=refreshToken;
-    if(accessToken){
-      ttSessionToken=accessToken;
-      ttTokenIssuedAt=Date.now();
-    }
-    addLog('✓ Refresh Token נשמר! עכשיו לחץ "התחבר / Refresh"','lo');
-    alert('✓ הצלחה!\nRefresh Token נשמר.\nלחץ "התחבר / Refresh" להמשך.');
-    // Cleanup
-    sessionStorage.removeItem('tt_oauth_state');
-    sessionStorage.removeItem('tt_oauth_client_id');
-    sessionStorage.removeItem('tt_oauth_client_secret');
-    sessionStorage.removeItem('tt_oauth_env');
-  }catch(e){
-    addLog('✗ OAuth exchange failed: '+e.message,'le');
-    alert('שגיאה: '+e.message);
-  }
-}
-
-// Check if we returned from OAuth authorization on page load
-(()=>{const params=new URLSearchParams(window.location.search);
-  // Handle errors first
-  if(params.get('error')){
-    addLog('✗ OAuth error: '+(params.get('error_description')||params.get('error')),'le');
-    window.history.replaceState({},'',window.location.pathname);
-    return;
-  }
-  if(params.get('code')&&params.get('state')){
-    const expected=sessionStorage.getItem('tt_oauth_state');
-    if(expected&&expected===params.get('state')){
-      ttExchangeCode(params.get('code')).then(()=>{
-        window.history.replaceState({},'',window.location.pathname);
-      });
-    } else {
-      addLog('✗ OAuth state mismatch','le');
-      window.history.replaceState({},'',window.location.pathname);
-    }
-  }
-})();
-
 async function ttLogin(){
-  // Try env-specific keys first, fallback to legacy single keys
-  const clientId=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
-  const clientSecret=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
-  const refreshToken=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
+  const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+  const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+  const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
   const statusEl=document.getElementById('tt-status');
   if(!clientId||!clientSecret||!refreshToken){
     statusEl.textContent='הכנס Client ID, Client Secret ו-Refresh Token';
@@ -3109,11 +2845,10 @@ async function ttLogin(){
     ttSessionToken=data['access_token']||data.data?.['session-token']||data.data?.['access_token'];
     if(!ttSessionToken) throw new Error('לא התקבל token');
     ttTokenIssuedAt=Date.now();
-    // Save in env-specific keys (encrypted)
-    await secureSet(ttClientIdKey(),clientId);
-    await secureSet(ttClientSecretKey(),clientSecret);
-    await secureSet(ttRefreshTokenKey(),refreshToken);
     localStorage.setItem('tt_session',ttSessionToken);
+    localStorage.setItem('tt_client_id',clientId);
+    localStorage.setItem('tt_client_secret',clientSecret);
+    localStorage.setItem('tt_refresh_token',refreshToken);
     addLog('✓ TastyTrade OAuth: התחברות הצליחה','lo');
     await ttLoadAccounts();
     statusEl.textContent='✓ מחובר';statusEl.style.color='var(--green)';
@@ -3161,26 +2896,26 @@ async function ttLoadAccounts(){
       return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
     }).join('');
     ttAccountNumber=accounts[0]['account-number']||accounts[0].number;
-    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem(ttAccountKey(),select.value);};
+    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
     document.getElementById('tt-accounts-row').style.display='';
-    const saved=localStorage.getItem(ttAccountKey())||localStorage.getItem('tt_account');
+    const saved=localStorage.getItem('tt_account');
     if(saved&&accounts.find(a=>(a['account-number']||a.number)===saved)){
       select.value=saved;ttAccountNumber=saved;
     }
     addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
   } else {
-    // Manual entry fallback (env-specific)
-    const savedManual=localStorage.getItem(ttAccountManualKey())||localStorage.getItem('tt_account_manual');
+    // Manual entry fallback
+    const savedManual=localStorage.getItem('tt_account_manual');
     if(savedManual){
       ttAccountNumber=savedManual;
-      addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+savedManual,'lo');
+      addLog('✓ TastyTrade: חשבון ידני '+savedManual,'lo');
     } else {
-      const acct=prompt('OAuth Grant לא כלל חשבונות עבור '+ttEnv+'. הזן מספר חשבון TastyTrade '+ttEnv+' ידנית:');
+      const acct=prompt('OAuth Grant לא כלל חשבונות. הזן מספר חשבון TastyTrade ידנית:\n(לדוגמה: 5WT00000)');
       if(acct&&acct.trim()){
         ttAccountNumber=acct.trim();
-        localStorage.setItem(ttAccountManualKey(),ttAccountNumber);
-        localStorage.setItem(ttAccountKey(),ttAccountNumber);
-        addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+ttAccountNumber+' נשמר','lo');
+        localStorage.setItem('tt_account_manual',ttAccountNumber);
+        localStorage.setItem('tt_account',ttAccountNumber);
+        addLog('✓ TastyTrade: חשבון ידני '+ttAccountNumber+' נשמר','lo');
       } else {
         addLog('⚠ TastyTrade: לא הוגדר חשבון','le');
       }
@@ -3410,20 +3145,17 @@ Exit reason: ${trade.closeReason||'unknown'}
 
 Focus on: what the signal indicated, whether the exit was correct, and what to do differently next time. Be specific and actionable.`;
 
-    const resp=await fetch('/api/ai_lesson',{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+_adminToken
-      },
-      body:JSON.stringify({prompt})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:150,
+        messages:[{role:'user',content:prompt}]
+      })
     });
-    if(!resp.ok){
-      const err=await resp.json().catch(()=>({}));
-      throw new Error(err.detail||resp.statusText);
-    }
     const data=await resp.json();
-    const lesson=data.lesson||'';
+    const lesson=data.content?.[0]?.text||'';
     if(lesson){
       const log=getTradeLog();
       const idx=log.findIndex(e=>String(e.orderId)===String(trade.orderId));

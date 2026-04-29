@@ -315,7 +315,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
-        <button id="tt-oauth-btn" class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;display:none;" title="OAuth flow לקבלת Refresh Token (רק ב-Live)">🔑 OAuth קבל Token</button>
+        <button class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;" title="OAuth Authorization Code flow לקבלת Refresh Token חדש">🔑 OAuth קבל Token</button>
         <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
       </div>
       <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
@@ -810,7 +810,7 @@ UNH</textarea>
 // Master password → PBKDF2 → AES-256-GCM key
 // Sensitive keys encrypted: tradier_token, tt_client_id, tt_client_secret, tt_refresh_token
 
-const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id_live','tt_client_secret_live','tt_refresh_token_live','tt_client_id_sandbox','tt_client_secret_sandbox','tt_refresh_token_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember','finnhub_key'];
+const SENSITIVE_KEYS=['tradier_token_live','tradier_account_live','tradier_token_sandbox','tradier_account_sandbox','tt_client_id','tt_client_secret','tt_refresh_token','tt_session','tt_remember','finnhub_key'];
 const SALT_KEY='_enc_salt';
 const MASTER_CHECK_KEY='_enc_check';
 let _cryptoKey=null;
@@ -944,13 +944,9 @@ async function restoreDecryptedFields(){
   if(token){const el=document.getElementById('api-token');if(el)el.value=token;}
   const acct=await secureGet(tradierAcctKey());
   if(acct){const el=document.getElementById('account-id');if(el)el.value=acct;}
-  // TastyTrade — env-specific keys with legacy fallback
-  const cid=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'));
+  // TastyTrade
+  const cid=await secureGet('tt_client_id');
   if(cid){const el=document.getElementById('tt-client-id');if(el)el.value=cid;}
-  const cs=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'));
-  if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
-  const rt=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'));
-  if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
   // Restore Finnhub key
   const fhKey=await secureGet('finnhub_key');
   if(fhKey){
@@ -958,6 +954,10 @@ async function restoreDecryptedFields(){
     const el=document.getElementById('finnhub-key');
     if(el)el.value=fhKey;
   }
+  const cs=await secureGet('tt_client_secret');
+  if(cs){const el=document.getElementById('tt-client-secret');if(el)el.value=cs;}
+  const rt=await secureGet('tt_refresh_token');
+  if(rt){const el=document.getElementById('tt-refresh-token');if(el)el.value=rt;}
 }
 
 // ── LOGIN GATE — username + password + 2FA before ANY UI access ─────────────
@@ -1620,12 +1620,6 @@ const ACCT=()=>document.getElementById('account-id').value.trim();
 // Per-env storage keys
 const tradierTokenKey=()=>'tradier_token_'+(tradierEnv||'sandbox');
 const tradierAcctKey=()=>'tradier_account_'+(tradierEnv||'sandbox');
-// Per-env TT keys
-const ttClientIdKey=()=>'tt_client_id_'+(ttEnv||'sandbox');
-const ttClientSecretKey=()=>'tt_client_secret_'+(ttEnv||'sandbox');
-const ttRefreshTokenKey=()=>'tt_refresh_token_'+(ttEnv||'sandbox');
-const ttAccountKey=()=>'tt_account_'+(ttEnv||'sandbox');
-const ttAccountManualKey=()=>'tt_account_manual_'+(ttEnv||'sandbox');
 
 async function tGet(path,params={},_log){
   const url=new URL(BASE()+path);
@@ -2860,41 +2854,11 @@ function setBroker(b){
   if(secTT) secTT.style.display=b==='tastytrade'?'':'none';
 }
 
-async function setTTEnv(e){
-  ttEnv=e;ttSessionToken=null;ttTokenIssuedAt=0;
-  // Reset account — different envs have different accounts
-  ttAccountNumber=null;
-  const accountSelect=document.getElementById('tt-account-select');
-  if(accountSelect)accountSelect.innerHTML='';
-  const accountRow=document.getElementById('tt-accounts-row');
-  if(accountRow)accountRow.style.display='none';
-  // Load env-specific account if exists
-  const savedAccount=localStorage.getItem(ttAccountKey())||localStorage.getItem(ttAccountManualKey());
-  if(savedAccount){
-    ttAccountNumber=savedAccount;
-  }
+function setTTEnv(e){
+  ttEnv=e;ttSessionToken=null;
   document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-tt-live').className=e==='live'?'active':'';
   localStorage.setItem('tt_env',e);
-  // OAuth button only relevant in Live (Sandbox provides refresh_token directly)
-  const oauthBtn=document.getElementById('tt-oauth-btn');
-  if(oauthBtn) oauthBtn.style.display=e==='live'?'':'none';
-  // Clear any error status
-  const statusEl=document.getElementById('tt-status');
-  if(statusEl){statusEl.textContent='';statusEl.style.color='var(--muted)';}
-  // Load env-specific credentials into form fields
-  if(_encInitialized){
-    const cid=await secureGet(ttClientIdKey());
-    const cs=await secureGet(ttClientSecretKey());
-    const rt=await secureGet(ttRefreshTokenKey());
-    const cidEl=document.getElementById('tt-client-id');
-    const csEl=document.getElementById('tt-client-secret');
-    const rtEl=document.getElementById('tt-refresh-token');
-    if(cidEl)cidEl.value=cid||'';
-    if(csEl)csEl.value=cs||'';
-    if(rtEl)rtEl.value=rt||'';
-    addLog('🔄 TastyTrade '+e+' — credentials נטענו','li');
-  }
   _switchScanContext();
 }
 
@@ -2902,9 +2866,9 @@ async function setTTEnv(e){
 async function ttEnsureValidToken(){
   const ageMs=Date.now()-ttTokenIssuedAt;
   if(!ttSessionToken||ageMs>14*60*1000){
-    const clientId=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'));
-    const clientSecret=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'));
-    const refreshToken=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'));
+    const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+    const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+    const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
     if(!clientId||!clientSecret||!refreshToken) return;
     try{
       const headers={'Content-Type':'application/json'};
@@ -2951,8 +2915,8 @@ async function ttRequest(method, path, body=null){
 // ── OAuth Authorization Code Flow ────────────────────────────────────────────
 // Used to get refresh_token for Live (Sandbox provides it directly in Create Grant)
 async function ttOAuthFlow(){
-  const clientId=(await secureGet(ttClientIdKey()))||document.getElementById('tt-client-id')?.value.trim();
-  const clientSecret=(await secureGet(ttClientSecretKey()))||document.getElementById('tt-client-secret')?.value.trim();
+  const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+  const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
   if(!clientId){
     alert('הכנס Client ID קודם');return;
   }
@@ -2986,33 +2950,23 @@ async function ttOAuthFlow(){
   // Poll for the popup to redirect back with code
   const pollInterval=setInterval(async()=>{
     try{
-      if(popup.closed){clearInterval(pollInterval);addLog('⚠ חלון ה-OAuth נסגר ידנית','le');return;}
+      if(popup.closed){clearInterval(pollInterval);addLog('⚠ חלון ה-OAuth נסגר','le');return;}
+      // Check if popup redirected to our origin (will throw cross-origin error otherwise)
       const popupUrl=popup.location.href;
-      // Check for redirect back to our origin (with code OR error)
-      if(popupUrl.includes(window.location.origin)){
+      if(popupUrl.includes('code=')&&popupUrl.includes(window.location.origin)){
+        clearInterval(pollInterval);
         const url=new URL(popupUrl);
         const code=url.searchParams.get('code');
-        const error=url.searchParams.get('error');
         const returnedState=url.searchParams.get('state');
         const expectedState=sessionStorage.getItem('tt_oauth_state');
-        if(error){
-          clearInterval(pollInterval);
-          popup.close();
-          addLog('✗ OAuth: '+(url.searchParams.get('error_description')||error),'le');
-          alert('OAuth נכשל: '+(url.searchParams.get('error_description')||error));
-          return;
+        popup.close();
+        if(returnedState!==expectedState){
+          addLog('✗ OAuth state mismatch — אבטחה','le');return;
         }
-        if(code){
-          clearInterval(pollInterval);
-          popup.close();
-          if(returnedState!==expectedState){
-            addLog('✗ OAuth state mismatch — אבטחה','le');return;
-          }
-          await ttExchangeCode(code);
-        }
+        await ttExchangeCode(code);
       }
     }catch(_){
-      // Cross-origin while still on TastyTrade — keep polling
+      // Cross-origin error while still on TastyTrade — keep polling
     }
   },500);
 }
@@ -3020,34 +2974,21 @@ async function ttOAuthFlow(){
 async function ttExchangeCode(code){
   const clientId=sessionStorage.getItem('tt_oauth_client_id');
   const clientSecret=sessionStorage.getItem('tt_oauth_client_secret');
-  const oauthEnv=sessionStorage.getItem('tt_oauth_env')||ttEnv;
   const redirectUri=window.location.origin+'/';
   try{
     addLog('🔄 מחליף code ב-refresh token...','li');
-    // Direct fetch — don't go through ttRequest (which expects auth)
-    const r=await fetch('/tt-proxy/oauth/token?_env='+oauthEnv,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({
-        'grant_type':'authorization_code',
-        'code':code,
-        'client_id':clientId,
-        'client_secret':clientSecret,
-        'redirect_uri':redirectUri
-      })
+    const data=await ttRequest('POST','/oauth/token',{
+      'grant_type':'authorization_code',
+      'code':code,
+      'client_id':clientId,
+      'client_secret':clientSecret,
+      'redirect_uri':redirectUri
     });
-    const data=await r.json();
-    if(!r.ok){
-      const err=data?.error?.message||data?.error_description||data?.error||JSON.stringify(data);
-      throw new Error(err);
-    }
     const refreshToken=data['refresh_token']||data.data?.['refresh_token'];
     const accessToken=data['access_token']||data.data?.['access_token'];
     if(!refreshToken)throw new Error('לא התקבל refresh_token');
-    // Save the new refresh_token (env-specific)
-    await secureSet(ttRefreshTokenKey(),refreshToken);
-    await secureSet(ttClientIdKey(),clientId);
-    await secureSet(ttClientSecretKey(),clientSecret);
+    // Save the new refresh_token
+    await secureSet('tt_refresh_token',refreshToken);
     const el=document.getElementById('tt-refresh-token');
     if(el)el.value=refreshToken;
     if(accessToken){
@@ -3069,30 +3010,22 @@ async function ttExchangeCode(code){
 
 // Check if we returned from OAuth authorization on page load
 (()=>{const params=new URLSearchParams(window.location.search);
-  // Handle errors first
-  if(params.get('error')){
-    addLog('✗ OAuth error: '+(params.get('error_description')||params.get('error')),'le');
-    window.history.replaceState({},'',window.location.pathname);
-    return;
-  }
   if(params.get('code')&&params.get('state')){
     const expected=sessionStorage.getItem('tt_oauth_state');
     if(expected&&expected===params.get('state')){
+      // Came back as redirect (not popup) — handle the code
       ttExchangeCode(params.get('code')).then(()=>{
+        // Clean URL
         window.history.replaceState({},'',window.location.pathname);
       });
-    } else {
-      addLog('✗ OAuth state mismatch','le');
-      window.history.replaceState({},'',window.location.pathname);
     }
   }
 })();
 
 async function ttLogin(){
-  // Try env-specific keys first, fallback to legacy single keys
-  const clientId=(await secureGet(ttClientIdKey()))||(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
-  const clientSecret=(await secureGet(ttClientSecretKey()))||(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
-  const refreshToken=(await secureGet(ttRefreshTokenKey()))||(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
+  const clientId=(await secureGet('tt_client_id'))||document.getElementById('tt-client-id')?.value.trim();
+  const clientSecret=(await secureGet('tt_client_secret'))||document.getElementById('tt-client-secret')?.value.trim();
+  const refreshToken=(await secureGet('tt_refresh_token'))||document.getElementById('tt-refresh-token')?.value.trim();
   const statusEl=document.getElementById('tt-status');
   if(!clientId||!clientSecret||!refreshToken){
     statusEl.textContent='הכנס Client ID, Client Secret ו-Refresh Token';
@@ -3109,11 +3042,10 @@ async function ttLogin(){
     ttSessionToken=data['access_token']||data.data?.['session-token']||data.data?.['access_token'];
     if(!ttSessionToken) throw new Error('לא התקבל token');
     ttTokenIssuedAt=Date.now();
-    // Save in env-specific keys (encrypted)
-    await secureSet(ttClientIdKey(),clientId);
-    await secureSet(ttClientSecretKey(),clientSecret);
-    await secureSet(ttRefreshTokenKey(),refreshToken);
     localStorage.setItem('tt_session',ttSessionToken);
+    localStorage.setItem('tt_client_id',clientId);
+    localStorage.setItem('tt_client_secret',clientSecret);
+    localStorage.setItem('tt_refresh_token',refreshToken);
     addLog('✓ TastyTrade OAuth: התחברות הצליחה','lo');
     await ttLoadAccounts();
     statusEl.textContent='✓ מחובר';statusEl.style.color='var(--green)';
@@ -3161,26 +3093,26 @@ async function ttLoadAccounts(){
       return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
     }).join('');
     ttAccountNumber=accounts[0]['account-number']||accounts[0].number;
-    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem(ttAccountKey(),select.value);};
+    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
     document.getElementById('tt-accounts-row').style.display='';
-    const saved=localStorage.getItem(ttAccountKey())||localStorage.getItem('tt_account');
+    const saved=localStorage.getItem('tt_account');
     if(saved&&accounts.find(a=>(a['account-number']||a.number)===saved)){
       select.value=saved;ttAccountNumber=saved;
     }
     addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
   } else {
-    // Manual entry fallback (env-specific)
-    const savedManual=localStorage.getItem(ttAccountManualKey())||localStorage.getItem('tt_account_manual');
+    // Manual entry fallback
+    const savedManual=localStorage.getItem('tt_account_manual');
     if(savedManual){
       ttAccountNumber=savedManual;
-      addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+savedManual,'lo');
+      addLog('✓ TastyTrade: חשבון ידני '+savedManual,'lo');
     } else {
-      const acct=prompt('OAuth Grant לא כלל חשבונות עבור '+ttEnv+'. הזן מספר חשבון TastyTrade '+ttEnv+' ידנית:');
+      const acct=prompt('OAuth Grant לא כלל חשבונות. הזן מספר חשבון TastyTrade ידנית:\n(לדוגמה: 5WT00000)');
       if(acct&&acct.trim()){
         ttAccountNumber=acct.trim();
-        localStorage.setItem(ttAccountManualKey(),ttAccountNumber);
-        localStorage.setItem(ttAccountKey(),ttAccountNumber);
-        addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+ttAccountNumber+' נשמר','lo');
+        localStorage.setItem('tt_account_manual',ttAccountNumber);
+        localStorage.setItem('tt_account',ttAccountNumber);
+        addLog('✓ TastyTrade: חשבון ידני '+ttAccountNumber+' נשמר','lo');
       } else {
         addLog('⚠ TastyTrade: לא הוגדר חשבון','le');
       }
@@ -3410,20 +3342,17 @@ Exit reason: ${trade.closeReason||'unknown'}
 
 Focus on: what the signal indicated, whether the exit was correct, and what to do differently next time. Be specific and actionable.`;
 
-    const resp=await fetch('/api/ai_lesson',{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+_adminToken
-      },
-      body:JSON.stringify({prompt})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:150,
+        messages:[{role:'user',content:prompt}]
+      })
     });
-    if(!resp.ok){
-      const err=await resp.json().catch(()=>({}));
-      throw new Error(err.detail||resp.statusText);
-    }
     const data=await resp.json();
-    const lesson=data.lesson||'';
+    const lesson=data.content?.[0]?.text||'';
     if(lesson){
       const log=getTradeLog();
       const idx=log.findIndex(e=>String(e.orderId)===String(trade.orderId));

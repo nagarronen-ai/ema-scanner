@@ -315,7 +315,7 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
       </div>
       <div style="display:flex;gap:6px;margin-top:6px;">
         <button class="btn-primary btn-sm" onclick="ttLogin()" style="flex:1;">🔐 התחבר / Refresh</button>
-        <button id="tt-oauth-btn" class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;display:none;" title="OAuth flow לקבלת Refresh Token (רק ב-Live)">🔑 OAuth קבל Token</button>
+        <button class="btn-amber btn-sm" onclick="ttOAuthFlow()" style="flex:1;font-size:11px;" title="OAuth Authorization Code flow לקבלת Refresh Token חדש">🔑 OAuth קבל Token</button>
         <button class="btn-secondary btn-sm" onclick="ttSaveConfig()" style="flex:1;">שמור</button>
       </div>
       <div id="tt-status" style="font-size:11px;color:var(--muted);margin-top:4px;min-height:14px;"></div>
@@ -1624,8 +1624,6 @@ const tradierAcctKey=()=>'tradier_account_'+(tradierEnv||'sandbox');
 const ttClientIdKey=()=>'tt_client_id_'+(ttEnv||'sandbox');
 const ttClientSecretKey=()=>'tt_client_secret_'+(ttEnv||'sandbox');
 const ttRefreshTokenKey=()=>'tt_refresh_token_'+(ttEnv||'sandbox');
-const ttAccountKey=()=>'tt_account_'+(ttEnv||'sandbox');
-const ttAccountManualKey=()=>'tt_account_manual_'+(ttEnv||'sandbox');
 
 async function tGet(path,params={},_log){
   const url=new URL(BASE()+path);
@@ -2862,26 +2860,9 @@ function setBroker(b){
 
 async function setTTEnv(e){
   ttEnv=e;ttSessionToken=null;ttTokenIssuedAt=0;
-  // Reset account — different envs have different accounts
-  ttAccountNumber=null;
-  const accountSelect=document.getElementById('tt-account-select');
-  if(accountSelect)accountSelect.innerHTML='';
-  const accountRow=document.getElementById('tt-accounts-row');
-  if(accountRow)accountRow.style.display='none';
-  // Load env-specific account if exists
-  const savedAccount=localStorage.getItem(ttAccountKey())||localStorage.getItem(ttAccountManualKey());
-  if(savedAccount){
-    ttAccountNumber=savedAccount;
-  }
   document.getElementById('btn-tt-sandbox').className=e==='sandbox'?'active':'';
   document.getElementById('btn-tt-live').className=e==='live'?'active':'';
   localStorage.setItem('tt_env',e);
-  // OAuth button only relevant in Live (Sandbox provides refresh_token directly)
-  const oauthBtn=document.getElementById('tt-oauth-btn');
-  if(oauthBtn) oauthBtn.style.display=e==='live'?'':'none';
-  // Clear any error status
-  const statusEl=document.getElementById('tt-status');
-  if(statusEl){statusEl.textContent='';statusEl.style.color='var(--muted)';}
   // Load env-specific credentials into form fields
   if(_encInitialized){
     const cid=await secureGet(ttClientIdKey());
@@ -3161,26 +3142,26 @@ async function ttLoadAccounts(){
       return`<option value="${num}">${nick} (${num}) — ${type}</option>`;
     }).join('');
     ttAccountNumber=accounts[0]['account-number']||accounts[0].number;
-    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem(ttAccountKey(),select.value);};
+    select.onchange=()=>{ttAccountNumber=select.value;localStorage.setItem('tt_account',select.value);};
     document.getElementById('tt-accounts-row').style.display='';
-    const saved=localStorage.getItem(ttAccountKey())||localStorage.getItem('tt_account');
+    const saved=localStorage.getItem('tt_account');
     if(saved&&accounts.find(a=>(a['account-number']||a.number)===saved)){
       select.value=saved;ttAccountNumber=saved;
     }
     addLog('✓ TastyTrade: '+accounts.length+' חשבונות נטענו','lo');
   } else {
-    // Manual entry fallback (env-specific)
-    const savedManual=localStorage.getItem(ttAccountManualKey())||localStorage.getItem('tt_account_manual');
+    // Manual entry fallback
+    const savedManual=localStorage.getItem('tt_account_manual');
     if(savedManual){
       ttAccountNumber=savedManual;
-      addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+savedManual,'lo');
+      addLog('✓ TastyTrade: חשבון ידני '+savedManual,'lo');
     } else {
-      const acct=prompt('OAuth Grant לא כלל חשבונות עבור '+ttEnv+'. הזן מספר חשבון TastyTrade '+ttEnv+' ידנית:');
+      const acct=prompt('OAuth Grant לא כלל חשבונות. הזן מספר חשבון TastyTrade ידנית:\n(לדוגמה: 5WT00000)');
       if(acct&&acct.trim()){
         ttAccountNumber=acct.trim();
-        localStorage.setItem(ttAccountManualKey(),ttAccountNumber);
-        localStorage.setItem(ttAccountKey(),ttAccountNumber);
-        addLog('✓ TastyTrade '+ttEnv+': חשבון ידני '+ttAccountNumber+' נשמר','lo');
+        localStorage.setItem('tt_account_manual',ttAccountNumber);
+        localStorage.setItem('tt_account',ttAccountNumber);
+        addLog('✓ TastyTrade: חשבון ידני '+ttAccountNumber+' נשמר','lo');
       } else {
         addLog('⚠ TastyTrade: לא הוגדר חשבון','le');
       }
@@ -3410,20 +3391,17 @@ Exit reason: ${trade.closeReason||'unknown'}
 
 Focus on: what the signal indicated, whether the exit was correct, and what to do differently next time. Be specific and actionable.`;
 
-    const resp=await fetch('/api/ai_lesson',{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+_adminToken
-      },
-      body:JSON.stringify({prompt})
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:150,
+        messages:[{role:'user',content:prompt}]
+      })
     });
-    if(!resp.ok){
-      const err=await resp.json().catch(()=>({}));
-      throw new Error(err.detail||resp.statusText);
-    }
     const data=await resp.json();
-    const lesson=data.lesson||'';
+    const lesson=data.content?.[0]?.text||'';
     if(lesson){
       const log=getTradeLog();
       const idx=log.findIndex(e=>String(e.orderId)===String(trade.orderId));
