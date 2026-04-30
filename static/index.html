@@ -2439,6 +2439,14 @@ function deleteList(name){
   const lists=getLists();
   delete lists[name];
   saveLists(lists);
+  // If it's a Scan-* list, also remove cached scan results
+  if(name.startsWith('Scan-')){
+    try{
+      const resultsCache=JSON.parse(localStorage.getItem('_scan_results_cache')||'{}');
+      delete resultsCache[name];
+      localStorage.setItem('_scan_results_cache',JSON.stringify(resultsCache));
+    }catch(_){}
+  }
   renderListBtns();
   addLog('נמחקה רשימה: '+name,'');
 }
@@ -2450,6 +2458,21 @@ function loadList(name){
   document.getElementById('tickers').value=Array.isArray(tickers)?tickers.join('\n'):tickers;
   updateTickerCount();
   document.querySelectorAll('.idx-btn').forEach(b=>b.classList.remove('active'));
+  // For Scan-* lists, restore cached scan results to the table
+  if(name.startsWith('Scan-')){
+    try{
+      const resultsCache=JSON.parse(localStorage.getItem('_scan_results_cache')||'{}');
+      const cached=resultsCache[name];
+      if(cached&&cached.results){
+        results=cached.results;
+        updateStats();renderTable();
+        const dateStr=new Date(cached.ts).toLocaleDateString('he-IL');
+        document.getElementById('last-scan-label').textContent='Scan: '+dateStr;
+        addLog('📊 נטענו '+cached.results.length+' תוצאות סריקה מ-'+name,'lo');
+        return;
+      }
+    }catch(e){console.warn('Cache load failed:',e);}
+  }
   addLog('✓ נטענה "'+name+'" — '+(Array.isArray(tickers)?tickers.length:tickers.split(',').length)+' טיקרים','li');
 }
 
@@ -4700,13 +4723,23 @@ async function runAutoScan(manual=false){
   if(manual||lastScan!==today){
     addLog('🤖 Auto-scan starting...','li');
 
-    // Collect all tickers from all lists (deduplicated)
+    // Collect all tickers from all lists + indices (deduplicated)
     const lists=getLists();
     const allTickers=new Set();
+    // 1. User lists
     for(const [name,tickers] of Object.entries(lists)){
       if(name.startsWith('Scan-'))continue; // Skip previous auto-scans
       if(Array.isArray(tickers)){
         tickers.forEach(t=>allTickers.add(t.toUpperCase()));
+      }
+    }
+    // 2. All indices (S&P500, Nasdaq100, Dow30, IWM)
+    for(const [idxName,idxTickers] of Object.entries(INDICES||{})){
+      if(typeof idxTickers==='string'){
+        idxTickers.split(',').forEach(t=>{
+          const tt=t.trim().toUpperCase();
+          if(tt) allTickers.add(tt);
+        });
       }
     }
     if(allTickers.size===0){
@@ -4741,6 +4774,14 @@ async function runAutoScan(manual=false){
         const lists2=getLists();
         lists2[listName]=matchTickers;
         saveLists(lists2);
+        // Save scan results to cache so user can view later
+        const resultsCache=JSON.parse(localStorage.getItem('_scan_results_cache')||'{}');
+        resultsCache[listName]={
+          ts:Date.now(),
+          results:matches,
+          tickers:matchTickers
+        };
+        localStorage.setItem('_scan_results_cache',JSON.stringify(resultsCache));
 
         addLog('🤖 Auto-scan: '+matches.length+' מועמדים → רשימה "'+listName+'"','lo');
 
