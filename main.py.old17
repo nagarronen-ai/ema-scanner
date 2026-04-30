@@ -324,7 +324,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.6",
+    return {"status": "ok", "version": "v3.5",
             "secure_storage": True, "admin_set": db.is_admin_set()}
 
 # ── Static ────────────────────────────────────────────────────────────────────

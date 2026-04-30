@@ -204,7 +204,6 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
     <button class="btn-secondary btn-sm" onclick="showSnapshotPicker()">📂 שחזר מ-Snapshot</button>
     <button class="btn-secondary btn-sm" onclick="createSnapshot('manual')" id="sync-btn" title="צור snapshot על השרת">☁ גבה לשרת</button>
     <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
-    <button class="btn-secondary btn-sm" onclick="runAutoScan(true)" style="color:var(--accent);" title="הרץ סריקה אוטומטית עכשיו">🤖 Auto-Scan</button>
     <button class="btn-secondary btn-sm" onclick="logout()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);" title="התנתקות מהמערכת">🔒 התנתק</button>
     <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
     <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
@@ -1588,10 +1587,9 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.6';
-const APP_DATE='30.04.2026';
+const APP_VERSION='v3.5';
+const APP_DATE='26.04.2026';
 const VERSION_HISTORY=[
-  {v:'v3.6', date:'30.04.2026', notes:'Auto-Scan Agent יומי 10:00 IL · snapshot backup על השרת (10 אחרונים, אוטומטי יומי) · Login + Logout + multi-device · single-password model · iPhone CSS optimization · TastyTrade Sandbox/Live separation מלאה · OAuth Authorization Code flow · Finnhub + Tradier Sandbox sync לשרת · AI lessons via server proxy · per-env TT account · P-Entry requires above SMA50 + SMA150 · short signal priority · pending orders לא סומנים סגורים · login overlay full-screen mobile'},
   {v:'v3.5', date:'26.04.2026', notes:'אבטחה: login + 2FA חובה, restore דורש סיסמה, cancel חוסם גישה, security guards מקיפים'},
   {v:'v3.4', date:'25.04.2026', notes:'Stability: persistence audit, journal switching robustness, save guards on context change, server-encrypted credentials, admin token, TT positions fix'},
   {v:'v3.3', date:'09.04.2026', notes:'יומן עסקאות: עסקאות סגורות, Market/Limit, ביטול סטופ אוטומטי, תיקון כפילויות'},
@@ -1717,11 +1715,8 @@ function analyzeTicker(ticker,bars,spyRet3m){
     if(trArr.length>=ATR_PERIOD)atrVal=avg(trArr.slice(-ATR_PERIOD));
   }
   const sma50=n>=50?avg(closes.slice(-50)):null;
-  // Need at least 150 trading days of data for meaningful SMA150
   const sma150=n>=150?avg(closes.slice(-150)):null;
-  const sma200=sma150; // Backward compat alias (was actually SMA150)
-  // Debug: log if we have suspiciously few bars
-  if(n<150){console.warn(ticker+': only '+n+' bars, SMA150 unavailable');}
+  const sma200=sma150; // Backward compat alias
   const e21=ema(closes,21),e50=ema(closes,50);
   const e21_0=e21[n-1],e50_0=e50[n-1],e21_1=e21[n-2],e50_1=e50[n-2];
   const high50d=n>51?Math.max(...highs.slice(-51,-1)):null;
@@ -1806,7 +1801,7 @@ function analyzeTicker(ticker,bars,spyRet3m){
   // P-Entry requires being above BOTH SMA50 AND SMA150 (don't enter below SMA50!)
   else if(priceCrossLong&&above50&&above150&&highVol&&rsOk)signal='entry';
   else if(above50&&above150&&aboveEMA21&&rs3m!==null&&rs3m>5)signal='mid';
-  return{ticker,close:close0,above50,above150,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma150val:sma150,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21,barsCount:n};
+  return{ticker,close:close0,above50,above200,aboveEMA21,breakout,highVol,volRatio,highVolDaysAgo,emaCross,emaCrossShort,priceCrossLong,priceCrossShort,rs3m,signal,sma50val:sma50,sma200val:sma200,ema21val:e21_0,ema50val:e50_0,atr:atrVal,distFromEMA21};
 }
 
 // ── RECALCULATE ──────────────────────────────────────────────────────────────
@@ -2145,7 +2140,7 @@ function renderTable(){
     const rs=r.rs3m!=null?'<span class="'+(r.rs3m>=0?'rp':'rn')+'">'+(r.rs3m>0?'+':'')+r.rs3m.toFixed(1)+'%</span>':'<span style="color:var(--muted)">N/A</span>';
     return`<tr data-t="${r.ticker}" class="${sel?'selected':''}" onclick="rowClick(event,'${r.ticker}')"><td><input type="checkbox" ${sel?'checked':''} onclick="event.stopPropagation();toggleSelect('${r.ticker}',this.checked)"/></td><td><span class="tc">${i+1}. ${r.ticker}</span></td><td>$${r.close.toFixed(2)}</td>
 <td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.above50?'#4ade80':'#fca5a5'}">${r.sma50val!=null?r.sma50val.toFixed(2):'N/A'}</span></td>
-<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.above200?'#4ade80':'#fca5a5'}">${r.sma150val!=null?r.sma150val.toFixed(2):'N/A'}</span></td>
+<td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.above200?'#4ade80':'#fca5a5'}">${r.sma200val!=null?r.sma200val.toFixed(2):'N/A'}</span></td>
 <td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.aboveEMA21?'#4ade80':'#fca5a5'}">${r.ema21val!=null?r.ema21val.toFixed(2):'N/A'}</span></td>
 <td><span style="font-family:'SF Mono',monospace;font-size:12px;color:${r.ema21val!=null&&r.ema50val!=null?(r.ema21val>r.ema50val?'#4ade80':'#fca5a5'):'var(--muted)'}">${r.ema50val!=null?r.ema50val.toFixed(2):'N/A'}</span></td>
 <td>${(r.atr!=null&&!isNaN(r.atr)&&r.close>0)?`<span style="font-family:'SF Mono',monospace;font-size:12px;color:var(--amber)">$${r.atr.toFixed(2)}</span> <span style="font-size:10px;color:var(--muted)">(${(r.atr/r.close*100).toFixed(1)}%)</span>`:'<span style="color:var(--muted)">—</span>'}</td><td>${pill(r.breakout,'פריצה ✓','לא')}</td><td>${r.volRatio!=null?`<span class="pill" style="background:${r.highVol?'rgba(74,222,128,.12)':'rgba(100,100,100,.1)'};color:${r.highVol?'#4ade80':'var(--muted)'};border:1px solid ${r.highVol?'rgba(74,222,128,.3)':'var(--border2)'};font-size:11px;">${r.volRatio.toFixed(1)}x${r.highVolDaysAgo>0?' ('+r.highVolDaysAgo+'d)':''}</span>`:pill(r.highVol,'גבוה ✓','רגיל')}</td><td>${r.emaCross?'<span class="pill pc">🟢 LONG</span>':r.emaCrossShort?'<span class="pill" style="background:rgba(239,68,68,.15);color:#fca5a5;border:1px solid rgba(239,68,68,.3)">🔴 SHORT</span>':r.priceCrossLong?`<span class="pill" style="background:rgba(167,139,250,.15);color:#a78bfa;border:1px solid rgba(167,139,250,.3)">🎯 P-Entry ${r.distFromEMA21!=null?'(+'+(r.distFromEMA21*100).toFixed(1)+'%)':''}</span>`:r.priceCrossShort?'<span class="pill" style="background:rgba(239,68,68,.10);color:#fca5a5">📉 P-Exit</span>':'<span class="pill pw">—</span>'}</td><td>${rs}</td><td>${sig}</td></tr>`;
@@ -4534,20 +4529,7 @@ async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,q
         addLog('🛡️ '+e.ticker+' סטופ @ $'+cp+' | P&L: '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2),'lo');
       }
     } else {
-      // Not in current positions
-      // CRITICAL: skip pending orders — they haven't filled yet, may not be in positions
-      if(e.status==='pending'){
-        // Check if order was canceled/expired in broker
-        const matchOrd=allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId));
-        if(matchOrd&&ad.isCanceledOrd(matchOrd)){
-          log[i].status='canceled';log[i].closeTs=new Date().toISOString();
-          log[i].closeReason='order canceled';updated++;
-          addLog('⚠ '+e.ticker+' פקודה בוטלה','le');
-        }
-        // Otherwise leave as pending — it might still fill
-        continue;
-      }
-      // Only mark "open" orders as closed if not in positions
+      // Position closed
       const closeInfo=findCloseInfo(e.ticker);
       if(closeInfo){
         const cp=closeInfo.closePrice;
@@ -4668,131 +4650,6 @@ saveTradeLog=function(log){_origSaveTradeLog(log);markChanges();};
 
 const _origSaveLists=saveLists;
 saveLists=function(lists){_origSaveLists(lists);markChanges();};
-
-
-// ── AUTO-SCAN AGENT ──────────────────────────────────────────────────────────
-// Runs daily at 10:00 IL time. Scans all tickers from all lists, filters for
-// strong/entry/mid/long signals, creates a new list named Scan-YYYY-MM-DD.
-
-const AUTO_SCAN_HOUR_IL = 10;  // 10:00 AM Israel time
-const LAST_AUTO_SCAN_KEY = '_last_auto_scan_date';
-
-function _todayIL(){
-  // Get today's date in Israel timezone (YYYY-MM-DD)
-  const now=new Date();
-  const ilTime=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Jerusalem'}));
-  return ilTime.toISOString().slice(0,10);
-}
-
-function _hourIL(){
-  const now=new Date();
-  const ilTime=new Date(now.toLocaleString('en-US',{timeZone:'Asia/Jerusalem'}));
-  return ilTime.getHours();
-}
-
-async function runAutoScan(manual=false){
-  const today=_todayIL();
-  const lastScan=localStorage.getItem(LAST_AUTO_SCAN_KEY);
-  if(!manual&&lastScan===today){
-    addLog('🤖 Auto-scan: already done today ('+today+')','li');
-    return;
-  }
-  if(manual||lastScan!==today){
-    addLog('🤖 Auto-scan starting...','li');
-
-    // Collect all tickers from all lists (deduplicated)
-    const lists=getLists();
-    const allTickers=new Set();
-    for(const [name,tickers] of Object.entries(lists)){
-      if(name.startsWith('Scan-'))continue; // Skip previous auto-scans
-      if(Array.isArray(tickers)){
-        tickers.forEach(t=>allTickers.add(t.toUpperCase()));
-      }
-    }
-    if(allTickers.size===0){
-      addLog('⚠ Auto-scan: אין טיקרים ברשימות','le');
-      return;
-    }
-    addLog('🤖 סריקת '+allTickers.size+' טיקרים...','li');
-
-    // Save current ticker textarea content + replace with all tickers
-    const tickerEl=document.getElementById('tickers');
-    const savedContent=tickerEl.value;
-    tickerEl.value=Array.from(allTickers).join('\n');
-
-    try{
-      // Run the scan and wait for it
-      await startScan();
-
-      // Filter results: strong, entry, mid, long-cross
-      const matches=results.filter(r=>
-        r.signal==='strong'||
-        r.signal==='entry'||
-        r.signal==='mid'||
-        r.emaCross===true  // 🟢 LONG cross
-      );
-
-      if(matches.length===0){
-        addLog('🤖 Auto-scan: לא נמצאו מועמדים','li');
-      } else {
-        // Create new list with matching tickers
-        const listName='Scan-'+today;
-        const matchTickers=matches.map(r=>r.ticker);
-        const lists2=getLists();
-        lists2[listName]=matchTickers;
-        saveLists(lists2);
-
-        addLog('🤖 Auto-scan: '+matches.length+' מועמדים → רשימה "'+listName+'"','lo');
-
-        // Browser notification
-        if('Notification' in window&&Notification.permission==='granted'){
-          new Notification('EMA Scanner — סריקה הושלמה',{
-            body:matches.length+' מועמדים נמצאו ברשימה '+listName,
-            icon:'/favicon.ico'
-          });
-        }
-
-        renderListBtns();
-      }
-
-      localStorage.setItem(LAST_AUTO_SCAN_KEY,today);
-    }catch(e){
-      addLog('✗ Auto-scan נכשל: '+e.message,'le');
-    } finally {
-      // Restore ticker textarea
-      tickerEl.value=savedContent;
-      updateTickerCount();
-    }
-  }
-}
-
-// Schedule: check every 5 minutes if we need to run
-setInterval(()=>{
-  const today=_todayIL();
-  const hour=_hourIL();
-  const lastScan=localStorage.getItem(LAST_AUTO_SCAN_KEY);
-  // Run if: it's 10 AM IL or later AND today's scan hasn't happened
-  if(hour>=AUTO_SCAN_HOUR_IL&&lastScan!==today){
-    runAutoScan(false);
-  }
-},5*60*1000); // Check every 5 minutes
-
-// On page load, also check (in case browser was opened after 10 AM)
-setTimeout(()=>{
-  const today=_todayIL();
-  const hour=_hourIL();
-  const lastScan=localStorage.getItem(LAST_AUTO_SCAN_KEY);
-  if(hour>=AUTO_SCAN_HOUR_IL&&lastScan!==today){
-    addLog('🤖 Auto-scan פספס את הזמן — מריץ עכשיו','li');
-    runAutoScan(false);
-  }
-},60*1000); // 1 minute after load
-
-// Request notification permission once
-if('Notification' in window&&Notification.permission==='default'){
-  setTimeout(()=>Notification.requestPermission(),5000);
-}
-
 
 // IDLE AUTO-LOGOUT — clear session after 30min of inactivity
 const IDLE_TIMEOUT_MS=30*60*1000; // 30 minutes
