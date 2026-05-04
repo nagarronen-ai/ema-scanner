@@ -1413,8 +1413,9 @@ function getTradeLog(){
   // Check cache (only valid for current journal)
   if(_tradesCache.length>0 && _tradesCacheKey===key) return _tradesCache;
   try{
-    // Try new key first, fallback to legacy 'trade_log'
-    const raw=localStorage.getItem(key)||localStorage.getItem('trade_log')||'[]';
+    // Read from current journal only — never fall back to legacy 'trade_log'
+    // (which is global and would leak data across broker/env contexts).
+    const raw=localStorage.getItem(key)||'[]';
     const log=JSON.parse(raw);
     return mergeClosedIntoLog(log);
   }catch(_){ return getClosedTrades(); }
@@ -3533,6 +3534,32 @@ function editClosedTrade(orderId){
   updateAcPreview();
 }
 
+function generateAILessonByOrderId(orderId){
+  const log=getTradeLog();
+  const entry=log.find(e=>String(e.orderId)===String(orderId));
+  if(!entry){addLog('⚠ עסקה לא נמצאה','le');return;}
+  addLog('🤖 מייצר שיעור עבור '+entry.ticker+'...','li');
+  generateAILesson(entry);
+}
+
+function revertToPending(orderId){
+  if(!confirm('להחזיר עסקה זו לסטטוס "ממתין"?\n(תיעלם מהעסקאות הסגורות)'))return;
+  const log=getTradeLog();
+  const idx=log.findIndex(e=>String(e.orderId)===String(orderId));
+  if(idx<0){addLog('⚠ עסקה לא נמצאה','le');return;}
+  log[idx].status='pending';
+  log[idx].closeTs=null;log[idx].closePrice=null;
+  log[idx].pnl=null;log[idx].closeReason=null;
+  // Also remove from permanent closed store so it doesn't get re-merged on next read
+  const allClosed=JSON.parse(localStorage.getItem(CLOSED_KEY)||'[]');
+  const filteredClosed=allClosed.filter(e=>String(e.orderId)!==String(orderId));
+  localStorage.setItem(CLOSED_KEY,JSON.stringify(filteredClosed));
+  apiPost('closed_trades',filteredClosed);
+  saveTradeLog(log);
+  renderTradeLog();
+  addLog('↩ '+log[idx].ticker+' הוחזר לסטטוס ממתין','lo');
+}
+
 function deleteClosedTrade(orderId){
   if(!confirm('למחוק עסקה זו לצמיתות?\n(לא ניתן לשחזר)'))return;
   // 1. Remove from active trade log
@@ -3725,13 +3752,14 @@ function renderTradeLog(){
           <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${reason}</td>
           <td style="padding:9px 12px;font-size:11px;color:var(--muted);">${ts}</td>
           <td style="padding:9px 12px;" colspan="1">
-            ${e.aiLesson?`<div style="font-size:11px;color:var(--muted);font-style:italic;max-width:200px;line-height:1.4;" title="${e.aiLesson}">${e.aiLesson.slice(0,80)}${e.aiLesson.length>80?'…':''}</div>`:'<span style="font-size:10px;color:var(--border2);">—</span>'}
+            ${e.aiLesson?`<div style="font-size:11px;color:var(--muted);font-style:italic;max-width:200px;line-height:1.4;" title="${e.aiLesson}">${e.aiLesson.slice(0,80)}${e.aiLesson.length>80?'…':''}</div>`:`<button class="btn-sm" style="background:rgba(79,110,247,.12);color:var(--accent);border:1px solid rgba(79,110,247,.25);font-size:10px;padding:2px 6px;" onclick="generateAILessonByOrderId('${e.orderId}')">🤖 Generate</button>`}
           </td>
           <td style="padding:9px 12px;">
             <div style="display:flex;gap:4px;">
-              <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;padding:3px 7px;" 
+              ${e.closeReason==='position not found — check manually'?`<button class="btn-sm" title="חזור ל-pending" style="background:rgba(79,110,247,.12);color:var(--accent);border:1px solid rgba(79,110,247,.25);font-size:11px;padding:3px 7px;" onclick="revertToPending('${e.orderId}')">↩</button>`:''}
+              <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;padding:3px 7px;"
                 onclick="editClosedTrade('${e.orderId}')">✏</button>
-              <button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2);font-size:11px;padding:3px 7px;" 
+              <button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--red);border:1px solid rgba(239,68,68,.2);font-size:11px;padding:3px 7px;"
                 onclick="deleteClosedTrade('${e.orderId}')">✕</button>
             </div>
           </td>
@@ -4205,9 +4233,11 @@ function clearTradeLog(){
   const log=getTradeLog();
   // Keep closed, remove open/pending
   const closed=log.filter(e=>e.status==='closed');
+  const key=currentJournalKey();
   _tradesCache=closed;
-  localStorage.setItem('trade_log', JSON.stringify(closed));
-  apiPost('trades', closed);
+  _tradesCacheKey=key;
+  localStorage.setItem(key, JSON.stringify(closed));
+  apiPost(getJournalApiPath(), closed);
   updateTradeLogBadge();
   renderTradeLog();
   addLog('✓ עסקאות פתוחות נוקו — '+closed.length+' סגורות נשמרו','lo');
@@ -4588,9 +4618,12 @@ async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,q
         updated++;
         addLog((pnl!=null?(pnl>=0?'✓':'✗')+' '+e.ticker+': '+(pnl>=0?'+':'')+'$'+pnl.toFixed(2):'⚠ '+e.ticker+' נסגר')+' ('+closeInfo.source+')','lo');
       } else {
+        // No evidence of a real close — flag for manual review so the user
+        // can tell these apart from legitimate closes (the renderer maps
+        // this exact string to the ⚠ לא אומת label).
         log[i].status='closed';log[i].closeTs=new Date().toISOString();
-        log[i].closeReason='position not found';updated++;
-        addLog('⚠ '+e.ticker+' לא נמצא — סומן סגור','le');
+        log[i].closeReason='position not found — check manually';updated++;
+        addLog('⚠ '+e.ticker+' לא נמצא — סומן סגור (ללא אימות)','le');
       }
       continue;
     }
@@ -4989,7 +5022,9 @@ try{
     localStorage.setItem('_scan_global_migrated','1');
   }
 }catch(_){}
-// Migrate legacy trade_log to tradier-live journal (one-time migration)
+// Migrate legacy trade_log to tradier-live journal (one-time migration).
+// Always remove the legacy key after migration to prevent stale data
+// leaking back via getTradeLog fallbacks across broker/env contexts.
 try{
   const legacy=localStorage.getItem('trade_log');
   const migrated=localStorage.getItem('_journal_migrated');
@@ -4997,10 +5032,11 @@ try{
     const trades=JSON.parse(legacy);
     if(trades.length>0){
       localStorage.setItem('trades_tradier_live', legacy);
-      localStorage.setItem('_journal_migrated','1');
       addLog('✓ '+trades.length+' עסקאות הועברו ל-Tradier Live journal','lo');
     }
+    localStorage.setItem('_journal_migrated','1');
   }
+  if(localStorage.getItem('_journal_migrated')) localStorage.removeItem('trade_log');
 }catch(_){}
 // Restore broker selection
 const savedBroker=localStorage.getItem('active_broker')||'tradier';

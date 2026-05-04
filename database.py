@@ -183,19 +183,13 @@ class Database:
         return self._get(self.journal_key(broker, env), [])
 
     def save_journal(self, broker, env, trades):
-        existing = self.get_journal(broker, env)
-        existing_ids = {str(t.get('orderId', '')) for t in existing}
-        merged = existing[:]
-        for t in trades:
-            tid = str(t.get('orderId', ''))
-            if tid not in existing_ids:
-                merged.append(t)
-            else:
-                idx = next((i for i, e in enumerate(merged)
-                            if str(e.get('orderId')) == tid), None)
-                if idx is not None:
-                    merged[idx] = t
-        self._set(self.journal_key(broker, env), merged)
+        # Last-write-wins replace (same as closed_trades). Merging here was
+        # making client-side deletes silently un-deletable: the frontend would
+        # send the reduced list, server would re-merge it with the previous
+        # copy, and the deleted trade would resurrect on next loadFromServer.
+        if not isinstance(trades, list):
+            return
+        self._set(self.journal_key(broker, env), trades)
 
     # ── Closed trades ────────────────────────────────────────────────────────
     def get_closed_trades(self):
