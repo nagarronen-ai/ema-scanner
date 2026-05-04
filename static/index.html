@@ -1440,7 +1440,7 @@ function saveTradeLog(log){
       const toAdd=newClosed.filter(e=>!existingIds.has(String(e.orderId)));
       if(toAdd.length>0){
         saveClosedTrades([...existing,...toAdd]);
-        toAdd.forEach(e=>generateAILesson(e));
+        toAdd.forEach(queueAILesson);
       }
     }
   }catch(e){console.error('Closed trades save failed:',e);}
@@ -3428,6 +3428,38 @@ async function brokerGetHistory(symbol,days=320){
 }
 
 // ── AI LESSON GENERATION ─────────────────────────────────────────────────────
+// Anthropic rate limit is 50 req/min. Serialize all generations through a
+// queue with a 1.5s gap (~40/min) so closing many trades at once doesn't
+// trigger a 429 storm.
+const _aiLessonQueue=[];
+const _aiLessonQueuedIds=new Set();
+let _aiLessonRunning=false;
+const AI_LESSON_INTERVAL_MS=1500;
+
+function queueAILesson(trade){
+  if(!trade||!trade.orderId) return;
+  const id=String(trade.orderId);
+  if(trade.aiLesson) return;            // already has a lesson — skip
+  if(_aiLessonQueuedIds.has(id)) return; // already queued — skip
+  _aiLessonQueuedIds.add(id);
+  _aiLessonQueue.push(trade);
+  _drainAILessonQueue();
+}
+
+async function _drainAILessonQueue(){
+  if(_aiLessonRunning) return;
+  _aiLessonRunning=true;
+  while(_aiLessonQueue.length){
+    const t=_aiLessonQueue.shift();
+    _aiLessonQueuedIds.delete(String(t.orderId));
+    try{ await generateAILesson(t); }catch(_){}
+    if(_aiLessonQueue.length){
+      await new Promise(r=>setTimeout(r,AI_LESSON_INTERVAL_MS));
+    }
+  }
+  _aiLessonRunning=false;
+}
+
 async function generateAILesson(trade){
   try{
     const pnl=trade.pnl!=null?(trade.pnl>=0?'+':'')+'$'+trade.pnl.toFixed(2):'unknown';
@@ -3538,8 +3570,9 @@ function generateAILessonByOrderId(orderId){
   const log=getTradeLog();
   const entry=log.find(e=>String(e.orderId)===String(orderId));
   if(!entry){addLog('⚠ עסקה לא נמצאה','le');return;}
-  addLog('🤖 מייצר שיעור עבור '+entry.ticker+'...','li');
-  generateAILesson(entry);
+  if(entry.aiLesson){addLog('ℹ '+entry.ticker+' כבר יש שיעור','li');return;}
+  addLog('🤖 ממתין בתור: '+entry.ticker+'...','li');
+  queueAILesson(entry);
 }
 
 function revertToPending(orderId){
