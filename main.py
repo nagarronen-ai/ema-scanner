@@ -1,30 +1,58 @@
 """
-EMA Crossover Scanner — FastAPI Backend v3.4
+EMA Crossover Scanner — FastAPI Backend v3.7
 Multi-broker journal + TastyTrade proxy + encrypted credentials + admin auth
 """
 from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, os, uvicorn, secrets
+import httpx, os, uvicorn, secrets, pyotp
 from datetime import datetime
 from database import Database
 
 app = FastAPI(title="EMA Scanner")
 db  = Database()
 
-app.add_middleware(CORSMiddleware, allow_origins=["*"],
-                   allow_methods=["*"], allow_headers=["*"])
+# CORS — explicit allowlist via env var. Default: same-origin only (no middleware).
+_CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+if _CORS_ORIGINS:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-App-Token", "X-TT-Env"],
+    )
+
+# Bootstrap secret — required for first-time admin/user creation when nothing
+# is set yet. Closes the TOCTOU race where any unauthenticated caller could
+# claim admin on a fresh deploy.
+BOOTSTRAP_TOKEN = os.environ.get("BOOTSTRAP_TOKEN", "")
+
+def _check_bootstrap(provided: str):
+    if not BOOTSTRAP_TOKEN:
+        raise HTTPException(status_code=500, detail="BOOTSTRAP_TOKEN not configured on server")
+    if not provided or not secrets.compare_digest(provided, BOOTSTRAP_TOKEN):
+        raise HTTPException(status_code=403, detail="Invalid bootstrap token")
 
 # ── Admin Token Verification ──────────────────────────────────────────────────
 async def verify_admin(authorization: str = Header(None)):
+    """Bearer admin/session token in Authorization header. Fails closed."""
     if not authorization or not authorization.startswith("Bearer "):
-        if not db.is_admin_set():
-            return True
         raise HTTPException(status_code=401, detail="Missing admin token")
     token = authorization[7:]
     if not db.verify_admin_token(token):
         raise HTTPException(status_code=403, detail="Invalid admin token")
+    return True
+
+async def verify_app_token(x_app_token: str = Header(None, alias="X-App-Token")):
+    """For endpoints (like the TT proxy) where Authorization is reserved for
+    the upstream service. Caller passes the same admin/session token in
+    X-App-Token instead."""
+    if not x_app_token:
+        raise HTTPException(status_code=401, detail="Missing app token")
+    if not db.verify_admin_token(x_app_token):
+        raise HTTPException(status_code=403, detail="Invalid app token")
     return True
 
 @app.post("/api/admin/setup")
@@ -37,6 +65,8 @@ async def setup_admin(request: Request):
         old_token = body.get("current_token", "")
         if not db.verify_admin_token(old_token):
             raise HTTPException(status_code=403, detail="Current token incorrect")
+    else:
+        _check_bootstrap(body.get("bootstrap_token", ""))
     db.set_admin_token(new_token)
     return {"ok": True}
 
@@ -51,22 +81,22 @@ def admin_status():
     return {"isSet": db.is_admin_set()}
 
 # ── User Login + 2FA ──────────────────────────────────────────────────────────
-import pyotp
 
 @app.post("/api/auth/setup_user")
 async def setup_user(request: Request):
-    """First-time user creation. Once set, requires admin token."""
+    """First-time user creation requires the BOOTSTRAP_TOKEN. Once a user is
+    set, rotation requires the admin token."""
     body = await request.json()
     username = body.get("username", "").strip()
     password = body.get("password", "")
     if not username or len(password) < 8:
         raise HTTPException(status_code=400, detail="Username + password (8+ chars) required")
     if db.is_user_set():
-        # Require admin auth
         auth = request.headers.get("authorization", "")
         if not auth.startswith("Bearer ") or not db.verify_admin_token(auth[7:]):
             raise HTTPException(status_code=403, detail="Admin token required to change user")
-    # Save user (no 2FA for now)
+    else:
+        _check_bootstrap(body.get("bootstrap_token", ""))
     db.set_user(username, password, None)
     return {"ok": True}
 
@@ -111,12 +141,10 @@ async def auth_verify_2fa(request: Request):
     totp = pyotp.TOTP(secret)
     if not totp.verify(code, valid_window=1):
         raise HTTPException(status_code=401, detail="קוד 2FA שגוי")
-    # Issue session token
+    # Issue session token (do NOT overwrite the master admin hash)
     token = secrets.token_urlsafe(32)
-    db.set_admin_token(token)
+    db.add_session_token(token)
     return {"token": token}
-
-import secrets
 
 
 # ── Encrypted Credentials ─────────────────────────────────────────────────────
@@ -156,12 +184,14 @@ async def save_tradier_sandbox(request: Request):
 TT_LIVE    = "https://api.tastytrade.com"
 TT_SANDBOX = "https://api.cert.tastyworks.com"
 
-@app.api_route("/tt-proxy/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH"])
+@app.api_route("/tt-proxy/{path:path}", methods=["GET","POST","PUT","DELETE","PATCH"],
+               dependencies=[Depends(verify_app_token)])
 async def tt_proxy(path: str, request: Request):
     env  = request.query_params.get("_env") or request.headers.get("X-TT-Env", "sandbox")
     base = TT_LIVE if env == "live" else TT_SANDBOX
-    headers = {k: v for k, v in request.headers.items()
-               if k.lower() not in ("host", "content-length", "x-tt-env")}
+    # Strip headers that shouldn't be forwarded — including our own app-auth header.
+    drop = {"host", "content-length", "x-tt-env", "x-app-token"}
+    headers = {k: v for k, v in request.headers.items() if k.lower() not in drop}
     body = await request.body()
     params = {k: v for k, v in request.query_params.items() if k != "_env"}
     async with httpx.AsyncClient(timeout=30) as client:
@@ -198,7 +228,7 @@ async def restore_snapshot(request: Request):
     return {"ok": True}
 
 # ── Earnings (Finnhub) ────────────────────────────────────────────────────────
-@app.get("/earnings-proxy/{symbol}")
+@app.get("/earnings-proxy/{symbol}", dependencies=[Depends(verify_admin)])
 async def earnings_proxy(symbol: str):
     sym = symbol.upper()
     key = db.get_finnhub_key()
@@ -324,7 +354,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v3.6",
+    return {"status": "ok", "version": "v3.7",
             "secure_storage": True, "admin_set": db.is_admin_set()}
 
 # ── Static ────────────────────────────────────────────────────────────────────
