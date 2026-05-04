@@ -1413,8 +1413,9 @@ function getTradeLog(){
   // Check cache (only valid for current journal)
   if(_tradesCache.length>0 && _tradesCacheKey===key) return _tradesCache;
   try{
-    // Try new key first, fallback to legacy 'trade_log'
-    const raw=localStorage.getItem(key)||localStorage.getItem('trade_log')||'[]';
+    // Read from current journal only — never fall back to legacy 'trade_log'
+    // (which is global and would leak data across broker/env contexts).
+    const raw=localStorage.getItem(key)||'[]';
     const log=JSON.parse(raw);
     return mergeClosedIntoLog(log);
   }catch(_){ return getClosedTrades(); }
@@ -4205,9 +4206,11 @@ function clearTradeLog(){
   const log=getTradeLog();
   // Keep closed, remove open/pending
   const closed=log.filter(e=>e.status==='closed');
+  const key=currentJournalKey();
   _tradesCache=closed;
-  localStorage.setItem('trade_log', JSON.stringify(closed));
-  apiPost('trades', closed);
+  _tradesCacheKey=key;
+  localStorage.setItem(key, JSON.stringify(closed));
+  apiPost(getJournalApiPath(), closed);
   updateTradeLogBadge();
   renderTradeLog();
   addLog('✓ עסקאות פתוחות נוקו — '+closed.length+' סגורות נשמרו','lo');
@@ -4989,7 +4992,9 @@ try{
     localStorage.setItem('_scan_global_migrated','1');
   }
 }catch(_){}
-// Migrate legacy trade_log to tradier-live journal (one-time migration)
+// Migrate legacy trade_log to tradier-live journal (one-time migration).
+// Always remove the legacy key after migration to prevent stale data
+// leaking back via getTradeLog fallbacks across broker/env contexts.
 try{
   const legacy=localStorage.getItem('trade_log');
   const migrated=localStorage.getItem('_journal_migrated');
@@ -4997,10 +5002,11 @@ try{
     const trades=JSON.parse(legacy);
     if(trades.length>0){
       localStorage.setItem('trades_tradier_live', legacy);
-      localStorage.setItem('_journal_migrated','1');
       addLog('✓ '+trades.length+' עסקאות הועברו ל-Tradier Live journal','lo');
     }
+    localStorage.setItem('_journal_migrated','1');
   }
+  if(localStorage.getItem('_journal_migrated')) localStorage.removeItem('trade_log');
 }catch(_){}
 // Restore broker selection
 const savedBroker=localStorage.getItem('active_broker')||'tradier';

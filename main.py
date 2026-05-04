@@ -319,18 +319,19 @@ async def save_results(request: Request):
 
 
 # ── AI Lesson Generator (Anthropic API proxy) ────────────────────────────────
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-haiku-4-5")
+
 @app.post("/api/ai_lesson", dependencies=[Depends(verify_admin)])
 async def ai_lesson(request: Request):
     body = await request.json()
     prompt = body.get("prompt", "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Missing prompt")
-    
-    # Get Anthropic API key from environment (set in Railway)
+
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY not configured on server")
-    
+
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
@@ -341,21 +342,40 @@ async def ai_lesson(request: Request):
                     "content-type": "application/json"
                 },
                 json={
-                    "model": "claude-sonnet-4-20250514",
-                    "max_tokens": 150,
+                    "model": ANTHROPIC_MODEL,
+                    "max_tokens": 300,
                     "messages": [{"role": "user", "content": prompt}]
                 }
             )
-            data = resp.json()
-            return {"lesson": data.get("content", [{}])[0].get("text", "")}
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=str(e))
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=502, detail=f"Network error calling Anthropic: {e}")
+
+    # Surface Anthropic errors instead of silently returning empty.
+    if resp.status_code >= 400:
+        try:
+            err = resp.json().get("error", {})
+            msg = f"{err.get('type', 'error')}: {err.get('message', resp.text[:200])}"
+        except Exception:
+            msg = resp.text[:200] or resp.reason_phrase
+        raise HTTPException(status_code=resp.status_code,
+                            detail=f"Anthropic API {resp.status_code}: {msg}")
+
+    data = resp.json()
+    content = data.get("content") or []
+    text = content[0].get("text", "") if content and isinstance(content[0], dict) else ""
+    if not text:
+        raise HTTPException(status_code=502,
+                            detail=f"Empty response from Anthropic (model={ANTHROPIC_MODEL})")
+    return {"lesson": text}
 
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
     return {"status": "ok", "version": "v3.7",
-            "secure_storage": True, "admin_set": db.is_admin_set()}
+            "secure_storage": True,
+            "admin_set": db.is_admin_set(),
+            "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+            "anthropic_model": ANTHROPIC_MODEL}
 
 # ── Static ────────────────────────────────────────────────────────────────────
 app.mount("/static", StaticFiles(directory="static"), name="static")
