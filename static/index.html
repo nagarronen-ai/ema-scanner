@@ -2939,6 +2939,7 @@ async function ttEnsureValidToken(){
     if(!clientId||!clientSecret||!refreshToken) return;
     try{
       const headers={'Content-Type':'application/json'};
+      if(_adminToken) headers['X-App-Token']=_adminToken;
       const url='/tt-proxy/oauth/token?_env='+ttEnv;
       const r=await fetch(url,{method:'POST',headers,body:JSON.stringify({
         grant_type:'refresh_token',refresh_token:refreshToken,
@@ -2955,6 +2956,7 @@ async function ttEnsureValidToken(){
 async function ttRequest(method, path, body=null){
   const headers={'Content-Type':'application/json','X-TT-Env':ttEnv};
   if(ttSessionToken) headers['Authorization']=ttSessionToken;
+  if(IS_SERVER && _adminToken) headers['X-App-Token']=_adminToken;
   const opts={method,headers};
   if(body) opts.body=JSON.stringify(body);
   // Use proxy when running via server (Railway), direct otherwise
@@ -2967,6 +2969,7 @@ async function ttRequest(method, path, body=null){
       await ttEnsureValidToken();
       if(ttSessionToken){
         const headers2={'Content-Type':'application/json','Authorization':'Bearer '+ttSessionToken};
+        if(IS_SERVER && _adminToken) headers2['X-App-Token']=_adminToken;
         const opts2={method,headers:headers2};
         if(body) opts2.body=JSON.stringify(body);
         const r2=await fetch(url,opts2);
@@ -3056,9 +3059,11 @@ async function ttExchangeCode(code){
   try{
     addLog('🔄 מחליף code ב-refresh token...','li');
     // Direct fetch — don't go through ttRequest (which expects auth)
+    const oauthHeaders={'Content-Type':'application/json'};
+    if(_adminToken) oauthHeaders['X-App-Token']=_adminToken;
     const r=await fetch('/tt-proxy/oauth/token?_env='+oauthEnv,{
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:oauthHeaders,
       body:JSON.stringify({
         'grant_type':'authorization_code',
         'code':code,

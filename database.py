@@ -2,7 +2,7 @@
 SQLite database for EMA Scanner v3.4
 Multi-broker journal + encrypted credentials at rest
 """
-import sqlite3, json, os, base64, secrets, hashlib
+import sqlite3, json, os, base64, secrets, hashlib, warnings
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 if os.path.exists('/data'):
@@ -10,9 +10,27 @@ if os.path.exists('/data'):
 else:
     DB_PATH = os.environ.get("DB_PATH", "data/scanner.db")
 
-# Server-side encryption key derived from environment variable
-# Set ENCRYPTION_KEY in Railway environment for production
-SERVER_SECRET = os.environ.get("ENCRYPTION_KEY", "default-dev-key-change-in-prod-please")
+# Server-side encryption key — required in production (when /data exists)
+_RAW_KEY = os.environ.get("ENCRYPTION_KEY", "")
+if not _RAW_KEY:
+    if os.path.exists('/data'):
+        raise RuntimeError(
+            "ENCRYPTION_KEY environment variable is required in production. "
+            "Set it in Railway before starting the server."
+        )
+    warnings.warn(
+        "ENCRYPTION_KEY not set — using insecure dev default. "
+        "DO NOT use this configuration in production.",
+        RuntimeWarning,
+    )
+    _RAW_KEY = "default-dev-key-change-in-prod-please"
+SERVER_SECRET = _RAW_KEY
+
+# PBKDF2 iteration counts. New records are written at PBKDF2_ITERATIONS;
+# legacy records without an explicit iteration count are verified at
+# PBKDF2_LEGACY_ITERATIONS for backward compatibility.
+PBKDF2_ITERATIONS = 600_000
+PBKDF2_LEGACY_ITERATIONS = 100_000
 
 def _derive_key():
     """Derive 32-byte AES key from server secret"""
@@ -97,25 +115,30 @@ class Database:
     def set_admin_token(self, token: str):
         """Hash and store admin token"""
         salt = secrets.token_bytes(16)
-        h = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, 100000)
+        h = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, PBKDF2_ITERATIONS)
         self._set("admin_token_hash", {
             "salt": base64.b64encode(salt).decode(),
-            "hash": base64.b64encode(h).decode()
+            "hash": base64.b64encode(h).decode(),
+            "iterations": PBKDF2_ITERATIONS,
         })
 
     def verify_admin_token(self, token: str) -> bool:
-        """Verify admin token (master) OR a session token"""
-        # Check session tokens first
-        sessions = self._get("session_tokens", [])
-        if token in sessions:
-            return True
-        # Fallback: master admin token
+        """Verify admin token (master) OR a session token. Fail-closed when no admin set."""
+        if not token:
+            return False
+        # Master admin token
         stored = self._get("admin_token_hash")
         if not stored:
-            return True
+            return False
+        # Session tokens (constant-time match against each)
+        sessions = self._get("session_tokens", [])
+        for s in sessions:
+            if secrets.compare_digest(s, token):
+                return True
         salt = base64.b64decode(stored["salt"])
         expected = base64.b64decode(stored["hash"])
-        actual = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, 100000)
+        iterations = int(stored.get("iterations", PBKDF2_LEGACY_ITERATIONS))
+        actual = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, iterations)
         return secrets.compare_digest(expected, actual)
 
     def add_session_token(self, token: str):
@@ -209,11 +232,12 @@ class Database:
 
     def set_user(self, username: str, password: str, totp_secret: str = None):
         salt = secrets.token_bytes(16)
-        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+        h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, PBKDF2_ITERATIONS)
         self._set("auth_user", {
             "username": username,
             "salt": base64.b64encode(salt).decode(),
             "hash": base64.b64encode(h).decode(),
+            "iterations": PBKDF2_ITERATIONS,
             "totp_secret": totp_secret,
         })
 
@@ -223,7 +247,8 @@ class Database:
             return False
         salt = base64.b64decode(user["salt"])
         expected = base64.b64decode(user["hash"])
-        actual = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, 100000)
+        iterations = int(user.get("iterations", PBKDF2_LEGACY_ITERATIONS))
+        actual = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, iterations)
         return secrets.compare_digest(expected, actual)
 
     def is_user_set(self) -> bool:
