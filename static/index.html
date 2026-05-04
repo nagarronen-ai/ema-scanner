@@ -3789,12 +3789,15 @@ function renderTradeLog(){
   // Orders: only PENDING stops for current broker+env
   const _curBroker=activeBroker||'tradier';
   const _curEnv=_curBroker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
+  // Working orders for the current context: pending stops AND pending buys.
   const orders_log=log.filter(e=>
-    e.side==='sell'&&
-    e.source==='stop'&&
     e.status==='pending'&&
     (e.broker||'tradier')===_curBroker&&
-    (e.env||'live')===_curEnv
+    (e.env||'live')===_curEnv&&
+    (
+      (e.side==='sell'&&e.source==='stop')||
+      (e.side==='buy')
+    )
   );
   // ── Closed Positions ──────────────────────────────────────────────────────
   // Filter closed by current broker+env
@@ -3867,13 +3870,31 @@ function renderTradeLog(){
       ordRows.innerHTML='<tr><td colspan="8" style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">אין פקודות</td></tr>';
     } else {
       ordRows.innerHTML=orders_log.map(e=>{
+        const isBuy=e.side==='buy';
+        const priceStr=e.price?'@ $'+parseFloat(e.price).toFixed(2):'';
+        if(isBuy){
+          // Pending buy order (limit/market/etc.) — Cancel only (no edit yet)
+          const typeLabel=(e.type||'limit').toUpperCase();
+          const cancelBtn=`<button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--muted);border:1px solid var(--border2);font-size:11px;" onclick="cancelPendingOrder('${e.orderId}','${e.ticker}')">✕ בטל</button>`;
+          return`<tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:9px 12px;font-family:SF Mono,monospace;font-weight:600;">${e.ticker}</td>
+            <td style="padding:9px 12px;color:var(--green);">Buy</td>
+            <td style="padding:9px 12px;">${e.qty}</td>
+            <td style="padding:9px 12px;color:var(--muted);font-size:12px;">${typeLabel} ${priceStr}</td>
+            <td style="padding:9px 12px;color:var(--muted);font-size:12px;">GTC</td>
+            <td style="padding:9px 12px;color:var(--green);">${e.price?'$'+parseFloat(e.price).toFixed(2):'—'}</td>
+            <td style="padding:9px 12px;"><span style="background:rgba(79,110,247,.12);color:#7b9fff;border:1px solid rgba(79,110,247,.25);border-radius:4px;padding:2px 8px;font-size:11px;">${sL[e.status]||e.status}</span></td>
+            <td style="padding:9px 12px;font-size:12px;color:var(--muted);">—</td>
+            <td style="padding:9px 12px;"><div style="display:flex;gap:4px;">${cancelBtn}</div></td>
+          </tr>`;
+        }
+        // Stop-loss row (existing logic)
         const linkedBuy=log.find(b=>b.side==='buy'&&(String(b.stopId)===String(e.orderId)||String(b.orderId)===String(e.linkedBuyOrderId)));
         const canAct=linkedBuy&&e.status!=='canceled'&&e.status!=='closed';
         const actionBtns=canAct?`<div style="display:flex;gap:4px;">
           <button class="btn-sm" style="background:rgba(245,158,11,.12);color:var(--amber);border:1px solid rgba(245,158,11,.25);font-size:11px;" onclick="updateStop('${e.ticker}',${linkedBuy.qty},'${linkedBuy.orderId}','${e.orderId}')">✏ עדכן</button>
           <button class="btn-sm" style="background:rgba(239,68,68,.08);color:var(--muted);border:1px solid var(--border2);font-size:11px;" onclick="cancelStop('${e.ticker}','${linkedBuy.orderId}','${e.orderId}')">✕ בטל</button>
         </div>`:'';
-        const priceStr=e.price?'@ $'+parseFloat(e.price).toFixed(2):'';
         return`<tr style="border-bottom:1px solid var(--border);">
           <td style="padding:9px 12px;font-family:SF Mono,monospace;font-weight:600;">${e.ticker}</td>
           <td style="padding:9px 12px;color:var(--red);">Sell</td>
@@ -4269,6 +4290,37 @@ ${atr?'ATR: $'+atr.toFixed(2)+' × '+mult+' → הצעה: $'+suggested:'ATR לא
 }
 
 // Cancel stop order
+// Cancel a pending buy/limit order via the active broker. Updates local log
+// to status='canceled' on success.
+async function cancelPendingOrder(orderId,ticker){
+  if(!confirm('לבטל את פקודת הקנייה הממתינה עבור '+ticker+'?'))return;
+  const broker=activeBroker||'tradier';
+  let apiOk=false;
+  try{
+    if(broker==='tradier'){
+      if(!TOKEN()||!ACCT()){alert('חסר Tradier token');return;}
+      await tCancelOrder(orderId);
+    } else {
+      await ttCancelOrder(orderId);
+    }
+    apiOk=true;
+  }catch(e){
+    addLog('✗ ביטול פקודה נכשל: '+e.message,'le');
+    return;
+  }
+  // Update local log
+  const log=getTradeLog();
+  const idx=log.findIndex(t=>String(t.orderId)===String(orderId));
+  if(idx>=0){
+    log[idx].status='canceled';
+    log[idx].closeTs=new Date().toISOString();
+    log[idx].closeReason='order canceled';
+    saveTradeLog(log);
+  }
+  addLog((apiOk?'✕ ':'⚠ ')+ticker+' פקודה בוטלה'+(apiOk?'':' (מקומי בלבד)'),'lo');
+  renderTradeLog();
+}
+
 async function cancelStop(ticker,buyOrderId,stopId){
   if(!confirm('לבטל את פקודת הסטופ עבור '+ticker+'?'))return;
   if(!TOKEN()||!ACCT()){alert('חסר token');return;}
@@ -4499,6 +4551,7 @@ async function checkAllPositions(){
         isStopOrd: o=>(o.type==='stop'||o.type==='stop_limit'||o.type==='stop_market')&&o.side==='sell',
         isFilledOrd: o=>o.status==='filled',
         isCanceledOrd: o=>['canceled','rejected','expired'].includes(o.status),
+        isWorkingOrd: o=>['open','pending','submitted','partially_filled'].includes(o.status),
       }
     );
 
@@ -4576,6 +4629,7 @@ async function checkAllPositionsTT(){
         },
         isFilledOrd: o=>o.status==='Filled'||o.status==='filled',
         isCanceledOrd: o=>['Cancelled','cancelled','Rejected','rejected','Expired','expired'].includes(o.status),
+        isWorkingOrd: o=>['Live','live','Received','received','Routed','routed','In Flight','in flight'].includes(o.status),
       }
     );
 
@@ -4650,6 +4704,58 @@ async function _processPositions(log,positions,allOrders,gainLoss,tradeHistory,q
         ts:ad.getOrdDate(ord)||new Date().toISOString(),
         linkedBuyOrderId:buyEntry?.orderId||'',source:'stop',pnl:null,fillPrice:null});
       updated++;
+    }
+  }
+
+  // Import pending BUY orders from broker (limit/market/stop_limit etc.) so the
+  // user can see and cancel them inside the app — including orders placed
+  // directly through the broker's UI.
+  const _curBroker=activeBroker||'tradier';
+  const _curEnv=_curBroker==='tradier'?(tradierEnv||'sandbox'):(ttEnv||'sandbox');
+  for(const ord of allOrders){
+    const sym=ad.getOrdSymbol(ord);
+    if(!sym) continue;
+    if(ad.getOrdSide(ord)!=='buy') continue;
+    if(!ad.isWorkingOrd || !ad.isWorkingOrd(ord)) continue;
+    const oid=String(ad.getOrdId(ord));
+    const idx=log.findIndex(e=>String(e.orderId)===oid);
+    const orderType=(ad.getOrdType(ord)||'limit').toLowerCase();
+    const entry={
+      id:'order_'+oid, orderId:oid, ticker:sym,
+      side:'buy', qty:ad.getOrdQty(ord), type:orderType,
+      price:ad.getOrdPrice(ord), fillPrice:null,
+      status:'pending',
+      ts:ad.getOrdDate(ord)||new Date().toISOString(),
+      stopId:null, stopPrice:null, pnl:null,
+      source:'broker_import_order',
+      broker:_curBroker, env:_curEnv,
+    };
+    if(idx<0){
+      log.unshift(entry);
+      updated++;
+      addLog('📥 פקודה ממתינה: '+sym+' '+orderType+' ×'+entry.qty+' @ $'+(entry.price||0).toFixed(2),'li');
+    } else if(log[idx].status!=='pending'){
+      // Broker says it's still working but our log says otherwise — resync
+      log[idx].status='pending';
+      log[idx].price=entry.price;
+      log[idx].qty=entry.qty;
+      updated++;
+    }
+  }
+  // Mark our local pending buy orders as canceled if the broker no longer
+  // shows them as working (and we have a working-order check available).
+  if(ad.isWorkingOrd){
+    for(let i=0;i<log.length;i++){
+      const e=log[i];
+      if(e.side!=='buy'||e.status!=='pending') continue;
+      if(e.source!=='broker_import_order') continue;
+      const stillWorking=allOrders.some(o=>String(ad.getOrdId(o))===String(e.orderId)&&ad.isWorkingOrd(o));
+      const wasFilled=allOrders.some(o=>String(ad.getOrdId(o))===String(e.orderId)&&ad.isFilledOrd(o));
+      const wasCanceled=allOrders.some(o=>String(ad.getOrdId(o))===String(e.orderId)&&ad.isCanceledOrd(o));
+      if(!stillWorking){
+        if(wasFilled){ log[i].status='open'; log[i].fillPrice=ad.getOrdFillPrice(allOrders.find(o=>String(ad.getOrdId(o))===String(e.orderId)))||e.price; updated++; }
+        else if(wasCanceled){ log[i].status='canceled'; log[i].closeTs=new Date().toISOString(); log[i].closeReason='order canceled'; updated++; }
+      }
     }
   }
 

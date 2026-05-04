@@ -371,7 +371,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v4.0",
+    return {"status": "ok", "version": "v4.1",
             "secure_storage": True,
             "admin_set": db.is_admin_set(),
             "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
