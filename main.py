@@ -1,8 +1,8 @@
 """
-EMA Crossover Scanner — FastAPI Backend v3.7
-Multi-broker journal + TastyTrade proxy + encrypted credentials + admin auth
+EMA Crossover Scanner — FastAPI Backend v4.4
+HttpOnly cookie auth (replaces localStorage bearer token)
 """
-from fastapi import FastAPI, HTTPException, Request, Header, Depends
+from fastapi import FastAPI, HTTPException, Request, Response, Header, Cookie, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,28 +35,51 @@ def _check_bootstrap(provided: str):
     if not provided or not secrets.compare_digest(provided, BOOTSTRAP_TOKEN):
         raise HTTPException(status_code=403, detail="Invalid bootstrap token")
 
-# ── Admin Token Verification ──────────────────────────────────────────────────
-async def verify_admin(authorization: str = Header(None)):
-    """Bearer admin/session token in Authorization header. Fails closed."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing admin token")
-    token = authorization[7:]
+# ── Session cookie helpers ────────────────────────────────────────────────────
+SESSION_COOKIE = "ema_session"
+SESSION_MAX_AGE = 24 * 3600  # match db.Database.SESSION_TTL_SECONDS
+
+# In a Railway deploy the app is served over HTTPS, so we lock the cookie down.
+# In local dev (no /data volume) we relax `secure` so http://localhost works.
+_COOKIE_SECURE = os.path.exists("/data")
+
+def _set_session_cookie(response: Response, token: str):
+    response.set_cookie(
+        key=SESSION_COOKIE,
+        value=token,
+        max_age=SESSION_MAX_AGE,
+        httponly=True,
+        secure=_COOKIE_SECURE,
+        samesite="strict",
+        path="/",
+    )
+
+def _clear_session_cookie(response: Response):
+    response.delete_cookie(SESSION_COOKIE, path="/")
+
+async def verify_session(
+    request: Request,
+    authorization: str = Header(None),
+):
+    """Authenticated request gate. Reads the HttpOnly session cookie first.
+    Falls back to `Authorization: Bearer <token>` only as a transitional
+    convenience for older frontend tabs still in flight; that path will be
+    removed once everyone is on the cookie flow."""
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token and authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     if not db.verify_admin_token(token):
-        raise HTTPException(status_code=403, detail="Invalid admin token")
+        raise HTTPException(status_code=401, detail="Invalid or expired session")
     return True
 
-async def verify_app_token(x_app_token: str = Header(None, alias="X-App-Token")):
-    """For endpoints (like the TT proxy) where Authorization is reserved for
-    the upstream service. Caller passes the same admin/session token in
-    X-App-Token instead."""
-    if not x_app_token:
-        raise HTTPException(status_code=401, detail="Missing app token")
-    if not db.verify_admin_token(x_app_token):
-        raise HTTPException(status_code=403, detail="Invalid app token")
-    return True
+# Back-compat alias so existing endpoint declarations don't break mid-edit.
+verify_admin = verify_session
+verify_app_token = verify_session
 
 @app.post("/api/admin/setup")
-async def setup_admin(request: Request):
+async def setup_admin(request: Request, response: Response):
     body = await request.json()
     new_token = body.get("token", "").strip()
     if not new_token or len(new_token) < 8:
@@ -68,36 +91,59 @@ async def setup_admin(request: Request):
     else:
         _check_bootstrap(body.get("bootstrap_token", ""))
     db.set_admin_token(new_token)
+    # Auto-login the operator after first/changed setup so they don't have to
+    # re-authenticate immediately.
+    session_token = secrets.token_urlsafe(32)
+    db.add_session_token(session_token)
+    _set_session_cookie(response, session_token)
     return {"ok": True}
 
 @app.post("/api/admin/verify")
-async def verify_admin_endpoint(request: Request):
+async def verify_admin_endpoint(request: Request, response: Response):
+    """Direct master-token login. If the supplied token matches the admin
+    hash, issue a session cookie. Returns whether the token was valid (kept
+    for older clients that just want a yes/no)."""
     body = await request.json()
     token = body.get("token", "")
-    return {"valid": db.verify_admin_token(token)}
+    if not token or not db.verify_admin_token(token):
+        return {"valid": False}
+    session_token = secrets.token_urlsafe(32)
+    db.add_session_token(session_token)
+    _set_session_cookie(response, session_token)
+    return {"valid": True}
 
 @app.get("/api/admin/status")
 def admin_status():
     return {"isSet": db.is_admin_set()}
 
-# ── User Login + 2FA ──────────────────────────────────────────────────────────
+# ── User Login ────────────────────────────────────────────────────────────────
 
 @app.post("/api/auth/setup_user")
-async def setup_user(request: Request):
+async def setup_user(request: Request, response: Response):
     """First-time user creation requires the BOOTSTRAP_TOKEN. Once a user is
-    set, rotation requires the admin token."""
+    set, rotation requires the session cookie."""
     body = await request.json()
     username = body.get("username", "").strip()
     password = body.get("password", "")
     if not username or len(password) < 8:
         raise HTTPException(status_code=400, detail="Username + password (8+ chars) required")
     if db.is_user_set():
-        auth = request.headers.get("authorization", "")
-        if not auth.startswith("Bearer ") or not db.verify_admin_token(auth[7:]):
-            raise HTTPException(status_code=403, detail="Admin token required to change user")
+        # Rotation — require an active session
+        token = request.cookies.get(SESSION_COOKIE)
+        if not token:
+            auth = request.headers.get("authorization", "")
+            if auth.startswith("Bearer "):
+                token = auth[7:]
+        if not token or not db.verify_admin_token(token):
+            raise HTTPException(status_code=401, detail="Active session required to change user")
     else:
         _check_bootstrap(body.get("bootstrap_token", ""))
     db.set_user(username, password)
+    # First-time setup: log the user in immediately
+    if not request.cookies.get(SESSION_COOKIE):
+        session_token = secrets.token_urlsafe(32)
+        db.add_session_token(session_token)
+        _set_session_cookie(response, session_token)
     return {"ok": True}
 
 @app.get("/api/auth/status")
@@ -135,7 +181,7 @@ def _login_record_fail(ip: str):
     _LOGIN_FAILS.setdefault(ip, []).append(time.time())
 
 @app.post("/api/auth/login")
-async def auth_login(request: Request):
+async def auth_login(request: Request, response: Response):
     ip = _client_ip(request)
     _login_check_ratelimit(ip)
     body = await request.json()
@@ -150,14 +196,26 @@ async def auth_login(request: Request):
     _LOGIN_FAILS.pop(ip, None)
     token = secrets.token_urlsafe(32)
     db.add_session_token(token)
-    return {"token": token}
-
+    _set_session_cookie(response, token)
+    # Token also returned in the body for transitional frontend compatibility.
+    # New frontends ignore it and rely on the cookie.
+    return {"ok": True, "token": token}
 
 @app.post("/api/auth/logout")
-async def auth_logout(request: Request):
-    auth = request.headers.get("authorization", "")
-    if auth.startswith("Bearer "):
-        db.remove_session_token(auth[7:])
+async def auth_logout(request: Request, response: Response):
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        auth = request.headers.get("authorization", "")
+        if auth.startswith("Bearer "):
+            token = auth[7:]
+    if token:
+        db.remove_session_token(token)
+    _clear_session_cookie(response)
+    return {"ok": True}
+
+@app.get("/api/auth/check", dependencies=[Depends(verify_session)])
+def auth_check():
+    """Boot probe: 200 if the session cookie is valid, 401 otherwise."""
     return {"ok": True}
 
 # ── Encrypted Credentials ─────────────────────────────────────────────────────
@@ -384,7 +442,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v4.3",
+    return {"status": "ok", "version": "v4.4",
             "secure_storage": True,
             "admin_set": db.is_admin_set(),
             "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
