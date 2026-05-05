@@ -4,3 +4,17 @@ __pycache__/
 .env
 .DS_Store
 *.db
+
+# Editor / OS
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Stop tracking ad-hoc backups and version snapshots
+*.old
+*.old[0-9]*
+*.[0-9]
+*.[0-9][0-9]
+*-backup-*.json
+ema-scanner-backup-*.json

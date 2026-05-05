@@ -130,10 +130,9 @@ class Database:
         stored = self._get("admin_token_hash")
         if not stored:
             return False
-        # Session tokens (constant-time match against each)
-        sessions = self._get("session_tokens", [])
-        for s in sessions:
-            if secrets.compare_digest(s, token):
+        # Session tokens (constant-time match against each non-expired one)
+        for s in self.get_active_sessions():
+            if secrets.compare_digest(s["token"], token):
                 return True
         salt = base64.b64decode(stored["salt"])
         expected = base64.b64decode(stored["hash"])
@@ -141,20 +140,59 @@ class Database:
         actual = hashlib.pbkdf2_hmac('sha256', token.encode(), salt, iterations)
         return secrets.compare_digest(expected, actual)
 
+    SESSION_TTL_SECONDS = 24 * 3600  # 24 hours
+
+    def _now_ts(self):
+        import time
+        return int(time.time())
+
+    def _normalize_sessions(self, raw):
+        """Accept legacy plain-string sessions or new {token, exp} dicts.
+        Returns the list of dicts and a bool indicating whether the list
+        changed (so the caller can persist the migration)."""
+        out = []
+        changed = False
+        now = self._now_ts()
+        default_exp = now + self.SESSION_TTL_SECONDS
+        for s in raw or []:
+            if isinstance(s, str):
+                # Legacy entry — give it a fresh 24h TTL
+                out.append({"token": s, "exp": default_exp})
+                changed = True
+            elif isinstance(s, dict) and "token" in s:
+                out.append({"token": s["token"], "exp": int(s.get("exp", default_exp))})
+            else:
+                changed = True  # drop garbage
+        return out, changed
+
     def add_session_token(self, token: str):
-        """Store session token for multi-device support"""
-        sessions = self._get("session_tokens", [])
-        sessions.append(token)
-        # Keep last 20 active sessions
+        """Store session token with a 24h TTL"""
+        raw = self._get("session_tokens", [])
+        sessions, _ = self._normalize_sessions(raw)
+        # Drop expired before appending
+        now = self._now_ts()
+        sessions = [s for s in sessions if s["exp"] > now]
+        sessions.append({"token": token, "exp": now + self.SESSION_TTL_SECONDS})
+        # Keep at most 20 active sessions (newest)
         if len(sessions) > 20:
             sessions = sessions[-20:]
         self._set("session_tokens", sessions)
 
     def remove_session_token(self, token: str):
-        sessions = self._get("session_tokens", [])
-        if token in sessions:
-            sessions.remove(token)
-            self._set("session_tokens", sessions)
+        raw = self._get("session_tokens", [])
+        sessions, _ = self._normalize_sessions(raw)
+        sessions = [s for s in sessions if s["token"] != token]
+        self._set("session_tokens", sessions)
+
+    def get_active_sessions(self):
+        """Return the list of non-expired sessions, persisting any cleanup."""
+        raw = self._get("session_tokens", [])
+        sessions, changed = self._normalize_sessions(raw)
+        now = self._now_ts()
+        kept = [s for s in sessions if s["exp"] > now]
+        if changed or len(kept) != len(sessions):
+            self._set("session_tokens", kept)
+        return kept
 
     def is_admin_set(self) -> bool:
         return self._get("admin_token_hash") is not None

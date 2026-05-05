@@ -104,16 +104,50 @@ async def setup_user(request: Request):
 def auth_status():
     return {"userSet": db.is_user_set(), "adminSet": db.is_admin_set()}
 
+# ── Login rate limiter ────────────────────────────────────────────────────────
+# Simple in-memory sliding window per client IP. 10 failed attempts within
+# 15 minutes locks the IP for the remainder of the window.
+_LOGIN_FAILS: dict = {}
+LOGIN_WINDOW_SECONDS = 15 * 60
+LOGIN_MAX_FAILS = 10
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+def _login_check_ratelimit(ip: str):
+    import time
+    now = time.time()
+    fails = [t for t in _LOGIN_FAILS.get(ip, []) if now - t < LOGIN_WINDOW_SECONDS]
+    _LOGIN_FAILS[ip] = fails
+    if len(fails) >= LOGIN_MAX_FAILS:
+        retry = int(LOGIN_WINDOW_SECONDS - (now - fails[0]))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed login attempts. Try again in {retry//60}m{retry%60}s.",
+            headers={"Retry-After": str(retry)},
+        )
+
+def _login_record_fail(ip: str):
+    import time
+    _LOGIN_FAILS.setdefault(ip, []).append(time.time())
+
 @app.post("/api/auth/login")
 async def auth_login(request: Request):
+    ip = _client_ip(request)
+    _login_check_ratelimit(ip)
     body = await request.json()
     username = body.get("username", "").strip()
     password = body.get("password", "")
     if not db.is_user_set():
         raise HTTPException(status_code=400, detail="System not initialized")
     if not db.verify_user_password(username, password):
+        _login_record_fail(ip)
         raise HTTPException(status_code=401, detail="שם משתמש או סיסמה שגויים")
-    # Issue session token — register it without replacing admin_token_hash
+    # Successful login — clear this IP's fail history
+    _LOGIN_FAILS.pop(ip, None)
     token = secrets.token_urlsafe(32)
     db.add_session_token(token)
     return {"token": token}
@@ -371,7 +405,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v4.1",
+    return {"status": "ok", "version": "v4.2",
             "secure_storage": True,
             "admin_set": db.is_admin_set(),
             "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),

@@ -117,6 +117,8 @@ textarea{resize:vertical;font-family:'SF Mono',monospace;font-size:11px;line-hei
 button{cursor:pointer;border-radius:var(--rs);font-size:13px;font-weight:500;border:none;transition:all .15s;padding:8px 14px;}
 .btn-primary{background:var(--accent);color:#fff;}.btn-primary:hover{background:#3d5ce0;}.btn-primary:disabled{opacity:.4;cursor:not-allowed;}
 .btn-secondary{background:var(--bg3);color:var(--text);border:1px solid var(--border2);}.btn-secondary:hover{background:rgba(255,255,255,.07);}
+.more-item{display:block;width:100%;text-align:right;background:transparent;color:var(--text);border:none;border-radius:4px;padding:8px 10px;font-size:13px;cursor:pointer;}
+.more-item:hover{background:rgba(255,255,255,.06);}
 .btn-sm{padding:5px 11px;font-size:12px;}
 .btn-amber{background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.35);}.btn-amber:hover{background:rgba(245,158,11,.25);}
 .btn-trade{background:rgba(79,110,247,.18);color:#7b9fff;border:1px solid rgba(79,110,247,.3);font-size:12px;padding:4px 11px;}.btn-trade:hover{background:rgba(79,110,247,.28);}.btn-trade:disabled{opacity:.3;cursor:not-allowed;}
@@ -195,20 +197,24 @@ input[type=checkbox]{width:15px;height:15px;cursor:pointer;accent-color:var(--ac
   <h1>
     <div class="dot" id="dot"></div>
     EMA Crossover Scanner
-    <span class="badge badge-blue">Tradier OHLCV + JS Math</span>
-    <span class="badge" id="version-badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;cursor:pointer;" onclick="openVersionModal()">v3.4 · 25.04.2026</span>
     <span class="badge badge-amber" id="market-badge">...</span>
   </h1>
-  <div style="display:flex;gap:8px;align-items:center;">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
     <span style="font-size:12px;color:var(--muted)" id="last-scan-label"></span>
-    <button class="btn-secondary btn-sm" onclick="showSnapshotPicker()">📂 שחזר מ-Snapshot</button>
-    <button class="btn-secondary btn-sm" onclick="createSnapshot('manual')" id="sync-btn" title="צור snapshot על השרת">☁ גבה לשרת</button>
-    <button class="btn-secondary btn-sm" onclick="openVersionModal()">🗂 גרסאות</button>
+    <span class="badge" id="version-badge" style="background:rgba(16,185,129,.12);color:#34d399;border:1px solid rgba(16,185,129,.25);font-family:SF Mono,monospace;letter-spacing:.02em;cursor:pointer;" onclick="openVersionModal()">v4.2</span>
     <button class="btn-secondary btn-sm" onclick="runAutoScan(true)" style="color:var(--accent);" title="הרץ סריקה אוטומטית עכשיו">🤖 Auto-Scan</button>
-    <button class="btn-secondary btn-sm" onclick="logout()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);" title="התנתקות מהמערכת">🔒 התנתק</button>
-    <button class="btn-secondary btn-sm" onclick="openLegend()">📖 Legend</button>
     <button class="btn-secondary btn-sm" onclick="openTradeLog()" id="trade-log-btn">📋 יומן עסקאות <span id="trade-log-badge" style="display:none;background:var(--accent);color:#fff;border-radius:10px;padding:1px 6px;font-size:10px;"></span></button>
-    <button class="btn-secondary btn-sm" onclick="exportCSV()">ייצוא CSV</button>
+    <div style="position:relative;">
+      <button class="btn-secondary btn-sm" id="more-btn" onclick="toggleMoreMenu(event)" title="עוד פעולות">⋯ עוד</button>
+      <div id="more-menu" style="display:none;position:absolute;top:calc(100% + 6px);left:0;background:var(--bg2);border:1px solid var(--border);border-radius:var(--rs);box-shadow:0 6px 24px rgba(0,0,0,.35);min-width:200px;z-index:50;padding:6px;">
+        <button class="more-item" onclick="exportCSV();closeMoreMenu()">📤 ייצוא CSV</button>
+        <button class="more-item" onclick="showSnapshotPicker();closeMoreMenu()">📂 שחזר מ-Snapshot</button>
+        <button class="more-item" onclick="createSnapshot('manual');closeMoreMenu()">☁ גבה לשרת</button>
+        <button class="more-item" onclick="openVersionModal();closeMoreMenu()">🗂 גרסאות</button>
+        <button class="more-item" onclick="openLegend();closeMoreMenu()">📖 Legend</button>
+      </div>
+    </div>
+    <button class="btn-secondary btn-sm" onclick="logout()" style="color:#ef4444;border-color:rgba(239,68,68,0.3);" title="התנתקות מהמערכת">🔒</button>
   </div>
 </div>
 
@@ -1589,9 +1595,15 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v3.6';
-const APP_DATE='30.04.2026';
+const APP_VERSION='v4.2';
+const APP_DATE='05.05.2026';
 const VERSION_HISTORY=[
+  {v:'v4.2', date:'05.05.2026', notes:'ניקיון Toolbar — תפריט "עוד" עם פעולות משניות (CSV, Snapshot, גרסאות, Legend) · session token TTL של 24 שעות · rate-limit על login (10 ניסיונות / 15 דק׳) · pending buy orders מהברוקר עם ביטול · cleanup של AI lesson (ללא markdown, click להרחבה)'},
+  {v:'v4.1', date:'05.05.2026', notes:'Pending buy orders מהברוקר נראים בטבלת Orders עם כפתור Cancel · adapter isWorkingOrd לזיהוי פקודות פעילות · sync דו-כיווני עם הברוקר'},
+  {v:'v4.0', date:'05.05.2026', notes:'מחיקת עסקה סגורה מנקה כל ה-journals בכל הקונטקסטים · prompt ל-AI lesson אוסר markdown · cleanLesson() מסיר ** ופותח טקסט מלא בלחיצה'},
+  {v:'v3.9', date:'05.05.2026', notes:'AI lesson דרך תור חוסם (1 בקשה / 1.5 שניות) למניעת 429'},
+  {v:'v3.8', date:'05.05.2026', notes:'תיקון רוחות: deleted closed trades לא חוזרים יותר (server save_journal עכשיו מחליף, לא ממזג) · ⚠ לא אומת + ↩ revert לפוזיציות שלא אומתו · 🤖 Generate AI lesson לעסקאות סגורות קיימות'},
+  {v:'v3.7', date:'04.05.2026', notes:'תיקוני אבטחה קריטיים: verify_admin_token fail-closed · BOOTSTRAP_TOKEN לסטאפ ראשוני · tt_proxy מחייב X-App-Token · earnings_proxy מאומת · CORS מצומצם · ENCRYPTION_KEY חובה · PBKDF2 600k'},
   {v:'v3.6', date:'30.04.2026', notes:'Auto-Scan Agent יומי 10:00 IL · snapshot backup על השרת (10 אחרונים, אוטומטי יומי) · Login + Logout + multi-device · single-password model · iPhone CSS optimization · TastyTrade Sandbox/Live separation מלאה · OAuth Authorization Code flow · Finnhub + Tradier Sandbox sync לשרת · AI lessons via server proxy · per-env TT account · P-Entry requires above SMA50 + SMA150 · short signal priority · pending orders לא סומנים סגורים · login overlay full-screen mobile'},
   {v:'v3.5', date:'26.04.2026', notes:'אבטחה: login + 2FA חובה, restore דורש סיסמה, cancel חוסם גישה, security guards מקיפים'},
   {v:'v3.4', date:'25.04.2026', notes:'Stability: persistence audit, journal switching robustness, save guards on context change, server-encrypted credentials, admin token, TT positions fix'},
@@ -3537,6 +3549,21 @@ Output rules — MUST follow:
 }
 
 function openLegend(){document.getElementById('legend-modal').className='modal-overlay show';}
+
+function toggleMoreMenu(ev){
+  if(ev) ev.stopPropagation();
+  const m=document.getElementById('more-menu');
+  if(!m) return;
+  m.style.display = m.style.display==='block' ? 'none' : 'block';
+}
+function closeMoreMenu(){ const m=document.getElementById('more-menu'); if(m) m.style.display='none'; }
+document.addEventListener('click',e=>{
+  const m=document.getElementById('more-menu');
+  const b=document.getElementById('more-btn');
+  if(!m||m.style.display!=='block') return;
+  if(b&&(b===e.target||b.contains(e.target))) return;
+  if(!m.contains(e.target)) closeMoreMenu();
+});
 
 function openAddClosedModal(){
   // Pre-fill today's date
