@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, Request, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import httpx, os, uvicorn, secrets, pyotp
+import httpx, os, uvicorn, secrets
 from datetime import datetime
 from database import Database
 
@@ -97,7 +97,7 @@ async def setup_user(request: Request):
             raise HTTPException(status_code=403, detail="Admin token required to change user")
     else:
         _check_bootstrap(body.get("bootstrap_token", ""))
-    db.set_user(username, password, None)
+    db.set_user(username, password)
     return {"ok": True}
 
 @app.get("/api/auth/status")
@@ -159,27 +159,6 @@ async def auth_logout(request: Request):
     if auth.startswith("Bearer "):
         db.remove_session_token(auth[7:])
     return {"ok": True}
-
-@app.post("/api/auth/verify_2fa")
-async def auth_verify_2fa(request: Request):
-    body = await request.json()
-    username = body.get("username", "").strip()
-    password = body.get("password", "")
-    code = body.get("code", "").strip()
-    if not db.verify_user_password(username, password):
-        raise HTTPException(status_code=401, detail="פרטי התחברות שגויים")
-    user = db.get_user()
-    secret = user.get("totp_secret")
-    if not secret:
-        raise HTTPException(status_code=400, detail="2FA not configured")
-    totp = pyotp.TOTP(secret)
-    if not totp.verify(code, valid_window=1):
-        raise HTTPException(status_code=401, detail="קוד 2FA שגוי")
-    # Issue session token (do NOT overwrite the master admin hash)
-    token = secrets.token_urlsafe(32)
-    db.add_session_token(token)
-    return {"token": token}
-
 
 # ── Encrypted Credentials ─────────────────────────────────────────────────────
 @app.get("/api/credentials", dependencies=[Depends(verify_admin)])
@@ -405,7 +384,7 @@ async def ai_lesson(request: Request):
 # ── Health ────────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "v4.2",
+    return {"status": "ok", "version": "v4.3",
             "secure_storage": True,
             "admin_set": db.is_admin_set(),
             "anthropic_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),

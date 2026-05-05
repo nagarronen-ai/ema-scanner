@@ -1024,12 +1024,6 @@ function showLoginScreen(){
           </label>
           <button onclick="doLoginStep1()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">כניסה</button>
         </div>
-        <div id="login-step-2" style="display:none !important;">
-          <div style="font-size:13px;color:#fff;margin-bottom:12px;">📱 הזן קוד 2FA מהאפליקציה:</div>
-          <input type="text" id="login-2fa" maxlength="6" inputmode="numeric" placeholder="000000" autocomplete="one-time-code" onkeydown="if(event.key==='Enter')doLoginStep2()" style="width:100%;padding:14px;font-size:20px;text-align:center;letter-spacing:8px;font-family:SF Mono,monospace;margin-bottom:12px;background:#1a1a23;border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:#fff;box-sizing:border-box;"/>
-          <button onclick="doLoginStep2()" style="width:100%;padding:14px;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-weight:500;cursor:pointer;font-size:15px;box-sizing:border-box;">אמת והיכנס</button>
-          <button onclick="cancelLogin()" style="width:100%;padding:8px;background:transparent;color:#888;border:none;font-size:11px;margin-top:8px;cursor:pointer;">ביטול</button>
-        </div>
         <div id="login-error" style="font-size:12px;color:#ef4444;margin-top:12px;text-align:center;min-height:16px;"></div>
       </div>`;
     // Append to documentElement (above body) to escape parent overflow
@@ -1038,11 +1032,8 @@ function showLoginScreen(){
   document.body.classList.add('login-active');
   overlay.style.display = 'flex';
   overlay.style.visibility = 'visible';
-  // Reset login form to step 1 (in case user was mid-2FA when logged out)
   const s1 = document.getElementById('login-step-1');
-  const s2 = document.getElementById('login-step-2');
   if(s1) s1.style.display = 'block';
-  if(s2) s2.style.display = 'none';
   // Clear previous values
   const u = document.getElementById('login-username');
   const p = document.getElementById('login-password');
@@ -1065,8 +1056,6 @@ function hideLoginScreen(){
   document.documentElement.classList.remove('login-active');
   _loginComplete = true;
 }
-
-let _loginCreds = null;
 
 async function doLoginStep1(){
   const user = document.getElementById('login-username').value.trim();
@@ -1104,44 +1093,6 @@ async function doLoginStep1(){
       if(typeof loadFromServer==='function') loadFromServer();
     }
   }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
-}
-
-async function doLoginStep2(){
-  const code = document.getElementById('login-2fa').value.trim();
-  const errEl = document.getElementById('login-error');
-  if(code.length!==6){errEl.textContent='קוד חייב להיות 6 ספרות';return;}
-  try{
-    const r = await fetch('/api/auth/verify_2fa', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({..._loginCreds, code: code})
-    });
-    if(!r.ok){
-      const ct = r.headers.get('content-type')||'';
-      if(ct.includes('application/json')){
-        const d = await r.json();
-        errEl.textContent = d.detail||'קוד שגוי';
-      } else errEl.textContent='קוד שגוי';
-      return;
-    }
-    const data = await r.json();
-    setAdminToken(data.token);
-    _loginCreds = null;
-    hideLoginScreen();
-    addLog('✓ התחברות הצליחה','lo');
-    if(typeof loadFromServer==='function') loadFromServer();
-  }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
-}
-
-function cancelLogin(){
-  // CRITICAL: Cancel must keep UI locked
-  document.getElementById('login-step-2').style.display='none';
-  document.getElementById('login-step-1').style.display='block';
-  document.getElementById('login-error').textContent='התחברות בוטלה';
-  document.getElementById('login-username').value='';
-  document.getElementById('login-password').value='';
-  document.getElementById('login-2fa').value='';
-  _loginCreds = null;
 }
 
 // Restore password confirmation
@@ -1595,7 +1546,7 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v4.2';
+const APP_VERSION='v4.3';
 const APP_DATE='05.05.2026';
 const VERSION_HISTORY=[
   {v:'v4.2', date:'05.05.2026', notes:'ניקיון Toolbar — תפריט "עוד" עם פעולות משניות (CSV, Snapshot, גרסאות, Legend) · session token TTL של 24 שעות · rate-limit על login (10 ניסיונות / 15 דק׳) · pending buy orders מהברוקר עם ביטול · cleanup של AI lesson (ללא markdown, click להרחבה)'},

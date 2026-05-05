@@ -262,7 +262,7 @@ class Database:
     def get_user(self):
         return self._get("auth_user", None)
 
-    def set_user(self, username: str, password: str, totp_secret: str = None):
+    def set_user(self, username: str, password: str):
         salt = secrets.token_bytes(16)
         h = hashlib.pbkdf2_hmac('sha256', password.encode(), salt, PBKDF2_ITERATIONS)
         self._set("auth_user", {
@@ -270,7 +270,6 @@ class Database:
             "salt": base64.b64encode(salt).decode(),
             "hash": base64.b64encode(h).decode(),
             "iterations": PBKDF2_ITERATIONS,
-            "totp_secret": totp_secret,
         })
 
     def verify_user_password(self, username: str, password: str) -> bool:
