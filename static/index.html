@@ -1063,8 +1063,11 @@ async function doLoginStep1(){
   const errEl = document.getElementById('login-error');
   if(!user||!pw){errEl.textContent='הזן שם משתמש וסיסמה';return;}
   try{
+    // The server sets the HttpOnly `ema_session` cookie in this response.
+    // We do not store the bearer token anywhere — that's the whole point.
     const r = await fetch('/api/auth/login', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({username: user, password: pw})
     });
@@ -1076,22 +1079,17 @@ async function doLoginStep1(){
       } else errEl.textContent='אימות נכשל';
       return;
     }
-    const data = await r.json();
-    if(data.token){
-      const remember = document.getElementById('login-remember')?.checked !== false;
-      setAdminToken(data.token, remember);
-      // Derive encryption key from login password (single-password model)
-      try{
-        await initEncryption(pw);
-        _encInitialized = true;
-        sessionStorage.setItem('_enc_session', pw); // Survives refresh
-      }catch(e){console.warn('Encryption init failed:',e);}
-      hideLoginScreen();
-      addLog('✓ התחברות הצליחה'+(remember?' (נשמר)':''),'lo');
-      // Restore decrypted fields from local storage (if any)
-      if(typeof restoreDecryptedFields==='function') await restoreDecryptedFields();
-      if(typeof loadFromServer==='function') loadFromServer();
-    }
+    _adminToken = '1'; // legacy "are we logged in?" flag — non-empty truthy
+    // Derive encryption key from login password (single-password model)
+    try{
+      await initEncryption(pw);
+      _encInitialized = true;
+      sessionStorage.setItem('_enc_session', pw); // Survives refresh
+    }catch(e){console.warn('Encryption init failed:',e);}
+    hideLoginScreen();
+    addLog('✓ התחברות הצליחה','lo');
+    if(typeof restoreDecryptedFields==='function') await restoreDecryptedFields();
+    if(typeof loadFromServer==='function') loadFromServer();
   }catch(e){errEl.textContent='שגיאת חיבור: '+e.message;}
 }
 
@@ -1156,17 +1154,16 @@ async function confirmRestorePassword(){
 
 async function logout(){
   if(!confirm('להתנתק מהמערכת?')) return;
-  // Tell server to invalidate session token
-  if(_adminToken){
-    try{
-      await fetch('/api/auth/logout',{
-        method:'POST',
-        headers:{'Authorization':'Bearer '+_adminToken}
-      });
-    }catch(_){}
-  }
+  // The server clears the HttpOnly cookie in this response.
+  try{
+    await fetch('/api/auth/logout',{
+      method:'POST',
+      credentials:'same-origin',
+    });
+  }catch(_){}
   _loginComplete = false;
   _adminToken = '';
+  // Sweep up any stale localStorage tokens left over from earlier versions.
   localStorage.removeItem('_admin_token');
   sessionStorage.removeItem('_admin_token');
   sessionStorage.removeItem('_enc_session');
@@ -1176,68 +1173,57 @@ async function logout(){
   showLoginScreen();
 }
 
-// ── ADMIN TOKEN — protects all server endpoints ──────────────────────────────
-let _adminToken = localStorage.getItem('_admin_token') || sessionStorage.getItem('_admin_token') || '';
+// ── AUTH STATE ───────────────────────────────────────────────────────────────
+// Auth is now driven by the HttpOnly `ema_session` cookie. `_adminToken` is
+// kept only as a truthy/falsy "are we logged in?" sentinel so existing UI
+// guards (e.g. `if(_adminToken){...}`) keep working without touching every
+// call site. Its value is never sent anywhere.
+let _adminToken = '';
 
-async function setAdminToken(token, remember=true){
-  _adminToken = token;
-  if(remember){
-    localStorage.setItem('_admin_token', token);
-  } else {
-    sessionStorage.setItem('_admin_token', token);
-  }
+// One-time cleanup of any tokens left in storage by older versions.
+try{ localStorage.removeItem('_admin_token'); sessionStorage.removeItem('_admin_token'); }catch(_){}
+
+// Boot probe — if the cookie is valid, we're already logged in.
+async function checkAuth(){
+  try{
+    const r = await fetch('/api/auth/check', {credentials:'same-origin'});
+    if(r.ok){ _adminToken = '1'; return true; }
+  }catch(_){}
+  _adminToken = '';
+  return false;
 }
 
 async function ensureAdminToken(){
-  if(_adminToken) return _adminToken;
-  // Check if admin is set on server
+  if(_adminToken) return true;
+  // Direct master-token emergency login (e.g. forgot user password).
+  // The server now sets the cookie when the token is valid.
   try{
-    const r = await fetch('/api/admin/status');
-    if(!r.ok){return null;} // Endpoint may not exist on older servers
-    const ct = r.headers.get('content-type')||'';
-    if(!ct.includes('application/json')) return null;
+    const r = await fetch('/api/admin/status', {credentials:'same-origin'});
+    if(!r.ok) return false;
     const d = await r.json();
     if(d.isSet){
-      // Prompt for token
       const tok = prompt('🔐 הזן Admin Token לגישה לשרת:');
-      if(tok){
-        // Verify
-        const v = await fetch('/api/admin/verify', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({token: tok})
-        });
-        if(!v.ok) return null;
-        const vct = v.headers.get('content-type')||'';
-        if(!vct.includes('application/json')) return null;
-        const vd = await v.json();
-        if(vd.valid){
-          setAdminToken(tok);
-          addLog('✓ Admin token verified','lo');
-          return tok;
-        } else {
-          alert('Token לא תקין');
-          return null;
-        }
+      if(!tok) return false;
+      const v = await fetch('/api/admin/verify', {
+        method:'POST',
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({token: tok}),
+      });
+      if(!v.ok) return false;
+      const vd = await v.json();
+      if(vd.valid){
+        _adminToken = '1';
+        addLog('✓ Admin token verified','lo');
+        return true;
       }
-    } else {
-      // First-time setup
-      const tok = prompt('🔐 הגדר Admin Token חדש (8+ תווים):\nיגן על כל הנתונים בשרת');
-      if(tok && tok.length >= 8){
-        const r2 = await fetch('/api/admin/setup', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({token: tok})
-        });
-        if(r2.ok){
-          setAdminToken(tok);
-          addLog('✓ Admin token נשמר','lo');
-          return tok;
-        }
-      }
+      alert('Token לא תקין');
+      return false;
     }
-  }catch(e){console.error(e);}
-  return null;
+    // First-time setup happens in the dedicated login/setup overlay; this
+    // emergency path doesn't try to bootstrap admin.
+    return false;
+  }catch(e){ console.error(e); return false; }
 }
 
 // ── SERVER API BRIDGE ─────────────────────────────────────────────────────────
@@ -1247,18 +1233,15 @@ async function ensureAdminToken(){
 const IS_SERVER = !window.location.href.startsWith('file://') && 
   (window.location.port !== '' || window.location.protocol === 'https:');
 
+// Auth is now via the HttpOnly `ema_session` cookie. Browsers attach it
+// automatically for same-origin requests, so apiGet/apiPost don't construct
+// Authorization headers anymore.
 async function apiGet(endpoint, fallback=null){
   if(!IS_SERVER) return fallback;
   try{
-    const headers = {};
-    if(_adminToken) headers['Authorization'] = 'Bearer ' + _adminToken;
-    const r = await fetch('/api/'+endpoint, {headers});
+    const r = await fetch('/api/'+endpoint, {credentials: 'same-origin'});
     if(r.status === 401 || r.status === 403){
-      await ensureAdminToken();
-      if(_adminToken){
-        const r2 = await fetch('/api/'+endpoint, {headers: {'Authorization':'Bearer '+_adminToken}});
-        if(r2.ok) return await r2.json();
-      }
+      _adminToken = '';   // legacy "are we logged in?" flag, kept until removal
       return fallback;
     }
     if(!r.ok) return fallback;
@@ -1271,22 +1254,14 @@ async function apiGet(endpoint, fallback=null){
 async function apiPost(endpoint, data){
   if(!IS_SERVER) return;
   try{
-    const headers = {'Content-Type': 'application/json'};
-    if(_adminToken) headers['Authorization'] = 'Bearer ' + _adminToken;
     const r = await fetch('/api/'+endpoint, {
       method: 'POST',
-      headers,
+      credentials: 'same-origin',
+      headers: {'Content-Type': 'application/json'},
       body: JSON.stringify(data)
     });
     if(r.status === 401 || r.status === 403){
-      await ensureAdminToken();
-      if(_adminToken){
-        await fetch('/api/'+endpoint, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
-          body: JSON.stringify(data)
-        });
-      }
+      _adminToken = '';
     }
   }catch(_){}
 }
@@ -1489,7 +1464,7 @@ async function loadFromServer(){
     // Re-render list buttons after server load
     // Load Finnhub key from server (always populate field — it's not too sensitive for the input)
     try{
-      const fh=await fetch('/api/finnhub_key',{headers:{'Authorization':'Bearer '+_adminToken}});
+      const fh=await fetch('/api/finnhub_key',{credentials:'same-origin'});
       if(fh.ok){
         const d=await fh.json();
         if(d.key&&d.key.trim()){
@@ -1504,7 +1479,7 @@ async function loadFromServer(){
 
     // Load Tradier Sandbox creds from server
     try{
-      const ts=await fetch('/api/tradier_sandbox',{headers:{'Authorization':'Bearer '+_adminToken}});
+      const ts=await fetch('/api/tradier_sandbox',{credentials:'same-origin'});
       if(ts.ok){
         const d=await ts.json();
         if(d.token){
@@ -1546,9 +1521,11 @@ const INDICES={
 };
 
 // ── VERSION ──────────────────────────────────────────────────────────────────
-const APP_VERSION='v4.3';
+const APP_VERSION='v4.4';
 const APP_DATE='05.05.2026';
 const VERSION_HISTORY=[
+  {v:'v4.4', date:'05.05.2026', notes:'אבטחה: מעבר ל-HttpOnly cookie (ema_session) במקום bearer token ב-localStorage · XSS לא יכול עוד לגנוב את הטוקן · SameSite=Strict + Secure · /api/auth/check לבדיקת session · ניקיון של setAdminToken/X-App-Token · v4.3 הסיר את 2FA הלא-מחובר'},
+  {v:'v4.3', date:'05.05.2026', notes:'הסרת קוד 2FA לא-בשימוש: verify_2fa endpoint, pyotp dependency, totp_secret column, login-step-2 UI'},
   {v:'v4.2', date:'05.05.2026', notes:'ניקיון Toolbar — תפריט "עוד" עם פעולות משניות (CSV, Snapshot, גרסאות, Legend) · session token TTL של 24 שעות · rate-limit על login (10 ניסיונות / 15 דק׳) · pending buy orders מהברוקר עם ביטול · cleanup של AI lesson (ללא markdown, click להרחבה)'},
   {v:'v4.1', date:'05.05.2026', notes:'Pending buy orders מהברוקר נראים בטבלת Orders עם כפתור Cancel · adapter isWorkingOrd לזיהוי פקודות פעילות · sync דו-כיווני עם הברוקר'},
   {v:'v4.0', date:'05.05.2026', notes:'מחיקת עסקה סגורה מנקה כל ה-journals בכל הקונטקסטים · prompt ל-AI lesson אוסר markdown · cleanLesson() מסיר ** ופותח טקסט מלא בלחיצה'},
@@ -1972,7 +1949,8 @@ async function saveFinnhubKey(val){
     try{
       await fetch('/api/finnhub_key',{
         method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({key:FINNHUB_KEY})
       });
       addLog('✓ Finnhub key נשמר (מוצפן + שרת)','lo');
@@ -1994,7 +1972,8 @@ async function saveConfig(){
     try{
       await fetch('/api/tradier_sandbox',{
         method:'POST',
-        headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
+        credentials:'same-origin',
+        headers:{'Content-Type':'application/json'},
         body:JSON.stringify({token:TOKEN(),account:ACCT()})
       });
       addLog('✓ נשמר Tradier Sandbox (מוצפן + סינכרון שרת)','lo');
@@ -2655,7 +2634,8 @@ async function createSnapshot(label='manual'){
   try{
     const r=await fetch('/api/snapshots/create',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({label})
     });
     if(!r.ok)throw new Error('שמירת snapshot נכשלה');
@@ -2669,7 +2649,7 @@ async function createSnapshot(label='manual'){
 async function showSnapshotPicker(){
   if(!_adminToken){addLog('⚠ נדרשת התחברות','le');return;}
   try{
-    const r=await fetch('/api/snapshots',{headers:{'Authorization':'Bearer '+_adminToken}});
+    const r=await fetch('/api/snapshots',{credentials:'same-origin'});
     if(!r.ok)throw new Error('טעינת snapshots נכשלה');
     const list=await r.json();
     if(list.length===0){alert('אין snapshots זמינים. צור גיבוי קודם.');return;}
@@ -2721,7 +2701,8 @@ async function confirmRestore(ts,dateStr){
     // Password OK — perform restore
     const r=await fetch('/api/snapshots/restore',{
       method:'POST',
-      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_adminToken},
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({ts})
     });
     if(!r.ok)throw new Error('שחזור נכשל');
@@ -2903,9 +2884,8 @@ async function ttEnsureValidToken(){
     if(!clientId||!clientSecret||!refreshToken) return;
     try{
       const headers={'Content-Type':'application/json'};
-      if(_adminToken) headers['X-App-Token']=_adminToken;
       const url='/tt-proxy/oauth/token?_env='+ttEnv;
-      const r=await fetch(url,{method:'POST',headers,body:JSON.stringify({
+      const r=await fetch(url,{method:'POST',credentials:'same-origin',headers,body:JSON.stringify({
         grant_type:'refresh_token',refresh_token:refreshToken,
         client_id:clientId,client_secret:clientSecret
       })});
@@ -2920,11 +2900,11 @@ async function ttEnsureValidToken(){
 async function ttRequest(method, path, body=null){
   const headers={'Content-Type':'application/json','X-TT-Env':ttEnv};
   if(ttSessionToken) headers['Authorization']=ttSessionToken;
-  if(IS_SERVER && _adminToken) headers['X-App-Token']=_adminToken;
-  const opts={method,headers};
-  if(body) opts.body=JSON.stringify(body);
   // Use proxy when running via server (Railway), direct otherwise
   const url=IS_SERVER?('/tt-proxy'+path):(TT_BASE()+path);
+  const opts={method,headers};
+  if(IS_SERVER) opts.credentials='same-origin'; // ema_session cookie auto-rides
+  if(body) opts.body=JSON.stringify(body);
   const r=await fetch(url,opts);
   if(!r.ok){
     // Retry once on 401 - token might have expired mid-request
@@ -2933,8 +2913,8 @@ async function ttRequest(method, path, body=null){
       await ttEnsureValidToken();
       if(ttSessionToken){
         const headers2={'Content-Type':'application/json','Authorization':'Bearer '+ttSessionToken};
-        if(IS_SERVER && _adminToken) headers2['X-App-Token']=_adminToken;
         const opts2={method,headers:headers2};
+        if(IS_SERVER) opts2.credentials='same-origin';
         if(body) opts2.body=JSON.stringify(body);
         const r2=await fetch(url,opts2);
         if(r2.ok) return r2.json();
@@ -3023,11 +3003,10 @@ async function ttExchangeCode(code){
   try{
     addLog('🔄 מחליף code ב-refresh token...','li');
     // Direct fetch — don't go through ttRequest (which expects auth)
-    const oauthHeaders={'Content-Type':'application/json'};
-    if(_adminToken) oauthHeaders['X-App-Token']=_adminToken;
     const r=await fetch('/tt-proxy/oauth/token?_env='+oauthEnv,{
       method:'POST',
-      headers:oauthHeaders,
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({
         'grant_type':'authorization_code',
         'code':code,
@@ -3473,10 +3452,8 @@ Output rules — MUST follow:
 
     const resp=await fetch('/api/ai_lesson',{
       method:'POST',
-      headers:{
-        'Content-Type':'application/json',
-        'Authorization':'Bearer '+_adminToken
-      },
+      credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},
       body:JSON.stringify({prompt})
     });
     if(!resp.ok){
@@ -5126,36 +5103,25 @@ window.addEventListener('beforeunload',()=>{
     }
   }catch(_){}
 });
-// SECURITY: Show login screen if not authenticated
-// Check both localStorage (remember me) and sessionStorage
-const savedToken = localStorage.getItem('_admin_token') || sessionStorage.getItem('_admin_token');
-if(savedToken){
-  fetch('/api/admin/verify', {
-    method: 'POST',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({token: savedToken})
-  }).then(r=>r.ok?r.json():null).then(d=>{
-    if(d&&d.valid){
-      _adminToken = savedToken;
-      _loginComplete = true;
-      // SINGLE-PASSWORD: if encrypted data exists but no session password,
-      // need to re-login to restore encryption key
-      if(localStorage.getItem(MASTER_CHECK_KEY) && hasEncryptedData() &&
-         !sessionStorage.getItem('_enc_session')){
-        // Force re-login to derive encryption key from password
-        showLoginScreen();
-      } else {
-        if(typeof loadFromServer === 'function') loadFromServer();
-      }
-    } else {
-      localStorage.removeItem('_admin_token');
-      sessionStorage.removeItem('_admin_token');
+// Boot probe: ask the server whether the HttpOnly session cookie is valid.
+// 200 → already logged in; 401 → show the login overlay.
+checkAuth().then(authed=>{
+  if(authed){
+    _loginComplete = true;
+    // SINGLE-PASSWORD model: even with a valid session cookie, we still need
+    // the user's password in this tab to re-derive the encryption key for
+    // their stored credentials. So if encrypted data exists but no session
+    // password, force the login overlay to capture it.
+    if(localStorage.getItem(MASTER_CHECK_KEY) && hasEncryptedData() &&
+       !sessionStorage.getItem('_enc_session')){
       showLoginScreen();
+    } else if(typeof loadFromServer === 'function'){
+      loadFromServer();
     }
-  }).catch(()=>showLoginScreen());
-} else {
-  showLoginScreen();
-}
+  } else {
+    showLoginScreen();
+  }
+});
 
 // Single-password model: encryption key derived from login password
 // On refresh, retrieve from sessionStorage (set during login)
